@@ -1,0 +1,269 @@
+{
+  "boards": [
+    {
+      "id": "board_ca2psxj_mfc7a0h2",
+      "name": "기본 쿠지판",
+      "prizes": [
+        {
+          "label": "A",
+          "count": 1
+        },
+        {
+          "label": "B",
+          "count": 2
+        },
+        {
+          "label": "C",
+          "count": 3
+        },
+        {
+          "label": "꽝",
+          "count": 4
+        }
+      ],
+      "tickets": [
+        {
+          "id": "t_9yotg6j_mfc7a0h2",
+          "result": "꽝"
+        },
+        {
+          "id": "t_dltthfu_mfc7a0h2",
+          "result": "꽝"
+        },
+        {
+          "id": "t_kmt2q2i_mfc7a0h2",
+          "result": "꽝"
+        },
+        {
+          "id": "t_5kfsjy2_mfc7a0h2",
+          "result": "꽝"
+        },
+        {
+          "id": "t_frwyoxa_mfc7a0h2",
+          "result": "C"
+        },
+        {
+          "id": "t_5nnldzh_mfc7a0h2",
+          "result": "C"
+        },
+        {
+          "id": "t_wq61hz7_mfc7a0h2",
+          "result": "B"
+        },
+        {
+          "id": "t_lff52rj_mfc7a0h2",
+          "result": "B"
+        },
+        {
+          "id": "t_mzwnjga_mfc7a0h2",
+          "result": "C"
+        },
+        {
+          "id": "t_s7yk1pk_mfc7a0h2",
+          "result": "A"
+        }
+      ]
+    },
+    {
+      "id": "board_zxmoz0p_mfdh9nux",
+      "name": "쿠지판 2",
+      "prizes": [
+        {
+          "label": "A",
+          "count": 1
+        },
+        {
+          "label": "B",
+          "count": 2
+        },
+        {
+          "label": "C",
+          "count": 3
+        },
+        {
+          "label": "D",
+          "count": 12
+        },
+        {
+          "label": "E",
+          "count": 12
+        },
+        {
+          "label": "F",
+          "count": 12
+        }
+      ],
+      "tickets": [
+        {
+          "id": "t_m8daofl_mfdha9q0",
+          "result": "F"
+        },
+        {
+          "id": "t_zmk9f3b_mfdha9q0",
+          "result": "E"
+        },
+        {
+          "id": "t_z0tq3sf_mfdha9q0",
+          "result": "E"
+        },
+        {
+          "id": "t_an3o9ra_mfdha9q0",
+          "result": "D"
+        },
+        {
+          "id": "t_5bjc9zy_mfdha9q0",
+          "result": "D"
+        },
+        {
+          "id": "t_5nspjuo_mfdha9q0",
+          "result": "D"
+        },
+        {
+          "id": "t_rih9z1x_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_fqzhokk_mfdha9q0",
+          "result": "F"
+        },
+        {
+          "id": "t_jbe9ic3_mfdha9q0",
+          "result": "C"
+        },
+        {
+          "id": "t_yns9c3b_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_klby0ef_mfdha9q0",
+          "result": "B"
+        },
+        {
+          "id": "t_e2ra54h_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_lriyzl7_mfdha9q0",
+          "result": "F"
+        },
+        {
+          "id": "t_xrqjhm8_mfdha9q0",
+          "result": "F"
+        },
+        {
+          "id": "t_wr235wp_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_mv0frkh_mfdha9q0",
+          "result": "E"
+        },
+        {
+          "id": "t_5xmc4ow_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_77vqmfp_mfdha9q0",
+          "result": "B"
+        },
+        {
+          "id": "t_qsxmlp9_mfdha9q0",
+          "result": "F"
+        },
+        {
+          "id": "t_jvq9eht_mfdha9q0",
+          "result": "E"
+        },
+        {
+          "id": "t_89mcg4d_mfdha9q0",
+          "result": "D"
+        },
+        {
+          "id": "t_kdm6dly_mfdha9q0",
+          "result": "E"
+        },
+        {
+          "id": "t_fuxeig6_mfdha9q0",
+          "result": "D"
+        },
+        {
+          "id": "t_cmr7oaq_mfdha9q0",
+          "result": "E"
+        },
+        {
+          "id": "t_uxwhtbp_mfdha9q0",
+          "result": "D"
+        },
+        {
+          "id": "t_n63qgit_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_5kd1jsh_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_bphd1zi_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_xkpvqlx_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_23b37x6_mfdha9q0",
+          "result": "E"
+        },
+        {
+          "id": "t_tiflmly_mfdha9q0",
+          "result": "C"
+        },
+        {
+          "id": "t_ixd2fr8_mfdha9q0",
+          "result": "A"
+        },
+        {
+          "id": "t_x3072n4_mfdha9q0",
+          "result": "D"
+        },
+        {
+          "id": "t_rswikvy_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_v1jiqdb_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_j9idmyx_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_l675vol_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_ey3l8ve_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_zga1rva_mfdha9q0",
+          "result": "F"
+        },
+        {
+          "id": "t_p5nkneg_mfdha9q0",
+          "result": null
+        },
+        {
+          "id": "t_w5daaiu_mfdha9q0",
+          "result": "F"
+        },
+        {
+          "id": "t_5xm8qxx_mfdha9q0",
+          "result": null
+        }
+      ]
+    }
+  ],
+  "currentBoardId": "board_zxmoz0p_mfdh9nux"
+}

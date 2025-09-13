@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>이치방 쿠지</title>
+    <style>
+:root{--bg:#0b0c10;--panel:#141821;--panel-2:#1d2330;--text:#e6e8ee;--muted:#9aa3b2;--accent:#4cc9f0;--primary:#8ac926;--danger:#ff595e}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Noto Sans KR,Arial,sans-serif}
+.app-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--panel);border-bottom:1px solid #232838}
+.app-header h1{font-size:18px;margin:0 12px 0 0}.app-header .left{display:flex;align-items:center;gap:12px}.app-header .right button{margin-left:8px}
+button{background:var(--panel-2);color:var(--text);border:1px solid #2a3142;padding:6px 10px;border-radius:6px;cursor:pointer}
+button.primary{background:var(--primary);color:#101314;border-color:transparent}button:hover{filter:brightness(1.05)}
+.board-controls select{background:var(--panel-2);color:var(--text);border:1px solid #2a3142;padding:6px;border-radius:6px}
+.app-main{display:flex;gap:12px;padding:12px}
+.board-summary{width:260px;background:var(--panel);border:1px solid #232838;border-radius:10px;padding:12px}
+.board-summary h3{margin:0}.summary-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.summary-total{color:var(--muted);font-weight:600}
+.board-summary ul{list-style:none;padding:0;margin:0}.board-summary li{display:flex;justify-content:space-between;padding:6px 8px;background:var(--panel-2);border-radius:6px;margin-bottom:6px}
+.kuji-area{flex:1;background:var(--panel);border:1px solid #232838;border-radius:10px;padding:12px}
+.kuji-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
+.ticket{position:relative;height:72px;background:linear-gradient(180deg,#202737,#1b2130);border:1px solid #2a3142;border-radius:10px;overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ticket.used{opacity:.85}.ticket .label{display:none}.ticket .result{position:static;font-weight:800;font-size:18px;color:#e9eef9}
+.ticket::after{content:"";position:absolute;right:0;top:0;bottom:0;width:28px;background:linear-gradient(180deg,#25314a,#202a3d);border-left:1px solid #2a3142;border-radius:0 10px 10px 0}
+.ticket::before{content:"";position:absolute;right:28px;top:8px;bottom:8px;width:4px;background:repeating-linear-gradient(to bottom,transparent 0 6px,rgba(255,255,255,.12) 6px 8px);border-radius:2px}
+dialog{border:none;padding:0;background:transparent}dialog::backdrop{background:rgba(0,0,0,.55)}
+.settings-form{min-width:540px;background:var(--panel);border:1px solid #232838;border-radius:12px;padding:16px}
+.settings-form h2{margin:0 0 6px}.settings-form .hint{margin:0 0 12px;color:var(--muted)}
+.prize-list{display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto;padding-right:4px}
+.prize-row{display:grid;grid-template-columns:60px 80px 1fr 100px auto;gap:8px;align-items:center;background:var(--panel-2);padding:8px;border-radius:8px}
+.prize-row input[type=text],.prize-row input[type=number]{width:100%;background:#131827;color:var(--text);border:1px solid #2a3142;padding:6px 8px;border-radius:6px}
+.prize-row .remove{color:#fff;background:var(--danger);border:none}.settings-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.draw-modal .draw-wrap{width:min(480px,92vw);background:var(--panel);border:1px solid #232838;border-radius:12px;overflow:hidden}
+.draw-stage{position:relative;height:200px;background:#0e1421;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 60px rgba(0,0,0,.6)}
+.draw-stage::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 80% at 50% 50%,rgba(0,0,0,0) 40%,rgba(0,0,0,.35) 100%)}
+.prize-reveal{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;letter-spacing:1px;color:#fff;opacity:0;transition:opacity .25s ease;--rev:0%;clip-path:inset(0 0 0 calc(100% - var(--rev)));background:linear-gradient(135deg,rgba(80,120,200,.18),rgba(80,200,160,.18));pointer-events:none}
+.prize-reveal.show{opacity:1}
+.confetti-canvas{position:fixed;inset:0;pointer-events:none}
+@media (max-width:900px){.app-main{flex-direction:column}.board-summary{width:auto}}
+
+/* Summary styling: emphasize rank and show product name */
+.board-summary li{align-items:center}
+.board-summary li .left{display:flex;align-items:center;gap:8px}
+.rank-badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;padding:2px 8px;font-weight:800;color:#0f141a;background:var(--accent);border-radius:999px}
+.prize-name{color:var(--text);opacity:0.9}
+.qty{color:var(--muted);font-weight:600}
+    </style>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="left">
+        <h1>이치방 쿠지</h1>
+        <div class="board-controls">
+          <select id="board-select" title="쿠지판 선택"></select>
+          <button id="new-board-btn">새 쿠지판</button>
+          <button id="rename-board-btn">이름 변경</button>
+          <button id="delete-board-btn">삭제</button>
+        </div>
+      </div>
+      <div class="right">
+        <button id="settings-btn">설정</button>
+        <button id="export-btn">저장(파일)</button>
+        <button id="import-btn">불러오기</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <aside class="board-summary">
+        <div class="summary-head">
+          <h3>상 현황</h3>
+          <div id="summary-total" class="summary-total" aria-live="polite"></div>
+        </div>
+        <ul id="prize-summary"></ul>
+      </aside>
+      <section class="kuji-area">
+        <div id="kuji-grid" class="kuji-grid" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <!-- Settings Modal -->
+    <dialog id="settings-modal">
+      <form method="dialog" class="settings-form" id="settings-form">
+        <h2>상 구성 설정</h2>
+        <p class="hint">A,B,C... 등 원하는 라벨과 개수를 설정하세요. "꽝"도 추가할 수 있어요.</p>
+        <div id="prize-list" class="prize-list"></div>
+        <div class="settings-actions">
+          <button type="button" id="add-prize-btn">상 추가</button>
+          <button type="submit" id="save-settings-btn" class="primary">저장</button>
+          <button type="button" id="close-settings-btn">닫기</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Draw Modal with Three.js canvas -->
+    <dialog id="draw-modal" class="draw-modal">
+      <div class="draw-wrap">
+        <div class="draw-stage" id="draw-stage">
+          <div class="prize-reveal" id="prize-reveal"></div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Confetti Canvas -->
+    <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
+
+    <script type="module">
+      import * as THREE from 'https://unpkg.com/three@0.159.0/build/three.module.js';
+      window.THREE = THREE;
+
+// ================= App Code (inlined) =================
+const STORAGE_KEY = "kuji.boards.v1";
+const $ = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+const ui = {
+  boardSelect: $('#board-select'),
+  newBoardBtn: $('#new-board-btn'),
+  renameBoardBtn: $('#rename-board-btn'),
+  deleteBoardBtn: $('#delete-board-btn'),
+  settingsBtn: $('#settings-btn'),
+  exportBtn: $('#export-btn'),
+  importBtn: $('#import-btn'),
+  prizeSummary: $('#prize-summary'),
+  summaryTotal: $('#summary-total'),
+  grid: $('#kuji-grid'),
+  settingsModal: $('#settings-modal'),
+  settingsForm: $('#settings-form'),
+  prizeList: $('#prize-list'),
+  addPrizeBtn: $('#add-prize-btn'),
+  closeSettingsBtn: $('#close-settings-btn'),
+  drawModal: $('#draw-modal'),
+  drawStage: $('#draw-stage'),
+  reveal: $('#prize-reveal'),
+  confetti: $('#confetti-canvas'),
+};
+
+let boards = [];
+let currentBoardId = null;
+let autoDirHandle = null; // FileSystemDirectoryHandle persisted in IDB
+
+function uid(prefix="id"){ return `${prefix}_${Math.random().toString(36).slice(2,9)}_${Date.now().toString(36)}`; }
+
+function getData(){ return {boards, currentBoardId}; }
+
+function load(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw){
+      const def = createBoard("기본 쿠지판", [
+        {label: 'A', name:'상품 A', count: 1}, {label: 'B', name:'상품 B', count: 2}, {label: 'C', name:'상품 C', count: 3}, {label: '꽝', name:'', count: 4},
+      ]);
+      boards = [def]; currentBoardId = def.id; save(); return;
+    }
+    const data = JSON.parse(raw); boards = data.boards || []; currentBoardId = data.currentBoardId || (boards[0]?.id ?? null);
+  }catch(e){ console.error('Failed to load, resetting', e); boards = []; currentBoardId = null; }
+}
+
+function save(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(getData()));
+  maybeAutoFileSave();
+}
+
+// IndexedDB helpers to persist the directory handle
+function idbOpen(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open('kuji-db', 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore('fs'); };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function idbGet(key){ const db = await idbOpen(); return new Promise((res,rej)=>{ const tx=db.transaction('fs','readonly'); const st=tx.objectStore('fs'); const r=st.get(key); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function idbSet(key,val){ const db = await idbOpen(); return new Promise((res,rej)=>{ const tx=db.transaction('fs','readwrite'); const st=tx.objectStore('fs'); const r=st.put(val, key); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); }
+
+async function ensureAutoDir(){
+  if(!('showDirectoryPicker' in window)) return null;
+  if(autoDirHandle){ return autoDirHandle; }
+  try{
+    // Try restore from IDB
+    const stored = await idbGet('autoDir');
+    if(stored){
+      autoDirHandle = stored;
+      // check permission
+      const perm = await autoDirHandle.queryPermission({mode:'readwrite'});
+      if(perm !== 'granted'){
+        const req = await autoDirHandle.requestPermission({mode:'readwrite'});
+        if(req !== 'granted') autoDirHandle = null;
+      }
+    }
+  }catch{}
+  if(!autoDirHandle){
+    try{
+      // Ask user once: pick the folder where index.html lives
+      autoDirHandle = await window.showDirectoryPicker();
+      await idbSet('autoDir', autoDirHandle);
+    }catch{ autoDirHandle = null; }
+  }
+  return autoDirHandle;
+}
+
+async function maybeAutoFileSave(){
+  try{
+    const dir = await ensureAutoDir();
+    if(!dir) return;
+    const fileHandle = await dir.getFileHandle('kuji_state.json', { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(new Blob([JSON.stringify(getData(), null, 2)], {type:'application/json'}));
+    await writable.close();
+  }catch(err){ /* user may cancel or deny; ignore */ }
+}
+
+function createBoard(name, prizes){
+  const id = uid('board');
+  const ticketCount = prizes.reduce((s,p)=>s+Math.max(0, Number(p.count||0)), 0);
+  const tickets = Array.from({length: ticketCount}, ()=>({id: uid('t'), result: null}));
+  return {id, name, prizes: prizes.map(p=>({label:String(p.label||'').trim()||'A', name:String(p.name||'').trim()||'', count: Math.max(0, Number(p.count||0))})), tickets};
+}
+function getBoard(){ return boards.find(b=>b.id===currentBoardId) || null; }
+function updateBoardSelect(){ ui.boardSelect.innerHTML = boards.map(b=>`<option value="${b.id}">${escapeHtml(b.name)}</option>`).join(''); if(currentBoardId){ ui.boardSelect.value = currentBoardId; } }
+
+function renderSummary(board){
+  const remaining = Object.create(null);
+  for(const p of board.prizes){ remaining[p.label] = (remaining[p.label]||0) + p.count; }
+  for(const t of board.tickets){ if(t.result){ remaining[t.result] = Math.max(0, (remaining[t.result]||0) - 1); } }
+  const items = Object.keys(remaining).sort().map(k=>{
+    const prize = board.prizes.find(p=>p.label===k);
+    const total = prize?.count ?? 0;
+    const name = prize?.name || '';
+    const rem = remaining[k];
+    return `<li><div class="left"><span class="rank-badge">${escapeHtml(k)}</span><span class="prize-name">${escapeHtml(name)}</span></div><span class="qty">${rem} / ${total}</span></li>`;
+  });
+  ui.prizeSummary.innerHTML = items.join('') || '<li>설정에서 상을 추가하세요</li>';
+  const totalAll = board.prizes.reduce((s,p)=>s + (p.count||0), 0);
+  const remainingAll = Object.values(remaining).reduce((s,n)=>s + n, 0);
+  if(ui.summaryTotal) ui.summaryTotal.textContent = `${remainingAll} / ${totalAll}`;
+}
+
+function renderGrid(board){
+  const frag = document.createDocumentFragment();
+  board.tickets.forEach((t)=>{
+    const el = document.createElement('button');
+    el.className = 'ticket' + (t.result ? ' used' : '');
+    el.setAttribute('data-ticket-id', t.id);
+    el.setAttribute('aria-label', t.result ? `결과 ${t.result}` : `쿠지`);
+    el.innerHTML = t.result ? `<span class="result">${escapeHtml(t.result)}</span>` : `<span class="result">&nbsp;</span>`;
+    el.addEventListener('click', ()=> onTicketClick(board, t));
+    frag.appendChild(el);
+  });
+  ui.grid.replaceChildren(frag);
+}
+
+function render(){ const b = getBoard(); updateBoardSelect(); if(!b){ ui.grid.innerHTML = '<p>쿠지판이 없습니다. "새 쿠지판" 버튼으로 만들어요.</p>'; ui.prizeSummary.innerHTML = ''; return; } renderSummary(b); renderGrid(b); }
+
+// Settings Modal
+function openSettings(){ const b = getBoard(); if(!b) return; ui.prizeList.innerHTML = ''; b.prizes.forEach(p=> addPrizeRow(p.label, p.count, p.name||'')); if(!ui.settingsModal.open) ui.settingsModal.showModal(); }
+function addPrizeRow(label='', count=1, name=''){ const row = document.createElement('div'); row.className = 'prize-row'; row.innerHTML = `<div>등수</div><input type="text" placeholder="예: A" value="${escapeHtml(label)}" /><input type="text" placeholder="상품명 (예: 피규어)" value="${escapeHtml(name||'')}" /><input type="number" min="0" step="1" value="${Number(count)||0}" /><button type="button" class="remove">삭제</button>`; row.querySelector('.remove').addEventListener('click', ()=> row.remove()); ui.prizeList.appendChild(row); }
+function readSettingsFromForm(){ const conf = []; $$('.prize-row', ui.prizeList).forEach(row=>{ const [_, labelInput, nameInput, countInput] = row.children; const label = String(labelInput.value || '').trim(); const name = String(nameInput.value || '').trim(); const count = Math.max(0, Number(countInput.value||0) | 0); if(label) conf.push({label, name, count}); }); return conf; }
+ui.settingsForm.addEventListener('submit', (e)=>{ e.preventDefault(); const b = getBoard(); if(!b) return; const conf = readSettingsFromForm(); const used = b.tickets.filter(t=>t.result).map(t=>t.result); const ticketCount = conf.reduce((s,p)=>s+Math.max(0, p.count), 0); const tickets = Array.from({length: ticketCount}, ()=>({id: uid('t'), result: null})); for(let i=0;i<Math.min(used.length, tickets.length);i++) tickets[i].result = used[i]; b.prizes = conf; b.tickets = tickets; save(); render(); ui.settingsModal.close(); });
+ui.addPrizeBtn.addEventListener('click', ()=> addPrizeRow('', 1, ''));
+ui.closeSettingsBtn.addEventListener('click', ()=> ui.settingsModal.close());
+ui.settingsBtn.addEventListener('click', openSettings);
+
+// Board controls
+ui.newBoardBtn.addEventListener('click', ()=>{ const name = prompt('새 쿠지판 이름을 입력하세요', `쿠지판 ${boards.length+1}`); if(!name) return; const b = createBoard(name, [ {label:'A', name:'상품 A', count:1}, {label:'B', name:'상품 B', count:1}, {label:'꽝', name:'', count:1} ]); boards.push(b); currentBoardId = b.id; save(); render(); });
+ui.renameBoardBtn.addEventListener('click', ()=>{ const b = getBoard(); if(!b) return; const name = prompt('새 이름', b.name); if(!name) return; b.name = name; save(); render(); });
+ui.deleteBoardBtn.addEventListener('click', ()=>{ const b = getBoard(); if(!b) return; if(!confirm(`정말로 "${b.name}" 을(를) 삭제할까요?`)) return; boards = boards.filter(x=>x.id!==b.id); currentBoardId = boards[0]?.id ?? null; save(); render(); });
+ui.boardSelect.addEventListener('change', (e)=>{ currentBoardId = e.target.value; save(); render(); });
+
+// Export / Import
+ui.exportBtn.addEventListener('click', ()=>{ const data = JSON.stringify(getData(), null, 2); const blob = new Blob([data], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `kuji_${new Date().toISOString().slice(0,19).replaceAll(':','-')}.json`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 1000); });
+ui.importBtn.addEventListener('click', async ()=>{ const input = document.createElement('input'); input.type = 'file'; input.accept = '.json,application/json'; input.onchange = ()=>{ const file = input.files?.[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const data = JSON.parse(String(reader.result||'{}')); if(Array.isArray(data.boards)){ boards = data.boards; currentBoardId = data.currentBoardId || boards[0]?.id || null; save(); render(); }else{ alert('잘못된 파일입니다.'); } }catch(err){ alert('불러오기에 실패했습니다.'); } }; reader.readAsText(file); }; input.click(); });
+
+// Draw modal close via backdrop or Esc
+// Prevent cancel until draw completes
+let canCloseDraw = false;
+ui.drawModal.addEventListener('click', (e)=>{
+  if(e.target === ui.drawModal && canCloseDraw){
+    stopThree();
+    ui.drawModal.close();
+  }
+});
+ui.drawModal.addEventListener('cancel', (e)=>{
+  // Esc press triggers 'cancel' which normally closes; block unless allowed
+  e.preventDefault();
+  if(canCloseDraw){
+    stopThree();
+    ui.drawModal.close();
+  }
+});
+
+// Three.js tearing implementation (shortened version uses current THREE)
+let three = { renderer:null, scene:null, camera:null, mesh:null, animId:0, isDragging:false, dragX:0, dragY:0, width:0, height:0, done:false };
+let drawContext = { board:null, ticket:null, decided:null };
+
+// Paper tearing sound: play random 0.3s snippets from mp3 while tearing
+let tearPlayers = [], tearReady = false, tearLastAt = 0;
+function initTearAudio(){
+  if(tearPlayers.length) return;
+  try{
+    const make = ()=>{ const a=new Audio('paper.mp3'); a.preload='auto'; a.volume=1.0; a.loop=false; a.dataset.playing='0'; a.addEventListener('loadedmetadata', ()=>{ tearReady = true; }); return a; };
+    tearPlayers = [make(), make(), make(), make()];
+  }catch(e){}
+}
+function playTearSnippet(intensity=1){
+  if(!tearPlayers.length) return;
+  const p = tearPlayers.find(x=>x.dataset.playing!=='1') || tearPlayers[0];
+  try{
+    p.dataset.playing='1';
+    const dur = Number.isFinite(p.duration) && p.duration>0.35 ? p.duration : 1.0;
+    const start = Math.random()*Math.max(0, dur-0.35);
+    p.currentTime = start;
+    p.volume = Math.max(0, Math.min(1, 0.9*intensity + 0.3));
+    p.play();
+    setTimeout(()=>{ try{ p.pause(); p.dataset.playing='0'; }catch(e){} }, 300);
+  }catch(e){ p.dataset.playing='0'; }
+}
+function updateTearSound(speed){
+  // schedule snippets based on peel speed
+  const now = performance.now();
+  const norm = Math.max(0, Math.min(1, speed/30));
+  if(!tearReady){ /* still can try play; browser will decode progressively */ }
+  const interval = 300 - norm*160; // 300ms down to ~140ms
+  if(speed > 0.2 && (now - tearLastAt) > interval){ tearLastAt = now; playTearSnippet(0.7 + norm*0.6); }
+}
+function stopTearAudio(){ tearLastAt = 0; for(const p of tearPlayers){ try{ p.pause(); p.dataset.playing='0'; }catch(e){} } }
+function snapBurst(){ /* no-op */ }
+
+async function onTicketClick(board, ticket){ if(ticket.result){ alert(`이미 뽑은 쿠지입니다. 결과: ${ticket.result}`); return; } drawContext.board = board; drawContext.ticket = ticket; drawContext.decided = null; canCloseDraw = false; if(!ui.drawModal.open) ui.drawModal.showModal(); requestAnimationFrame(()=>{ setupDrawStage(); }); }
+
+function setupDrawStage(){ ui.reveal.textContent=''; ui.reveal.classList.remove('show'); const rect = ui.drawStage.getBoundingClientRect(); if(rect.width<10||rect.height<10){ requestAnimationFrame(setupDrawStage); return; } startThree(ui.drawStage); }
+
+function startThree(container){ stopThree(); let width = container.clientWidth, height = container.clientHeight; if(width<10||height<10){ const r = container.getBoundingClientRect(); width=Math.max(width,r.width||900); height=Math.max(height,r.height||260);} const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true}); renderer.setSize(width,height); renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1)); container.appendChild(renderer.domElement);
+  const scene = new THREE.Scene(); const fov=45; const camera = new THREE.PerspectiveCamera(fov, width/height, 0.1, 3000);
+  const stripWidth = Math.min(480, width*0.75); const stripHeight = Math.min(110, height*0.5); const segX=100, segY=12; const geo = new THREE.PlaneGeometry(stripWidth, stripHeight, segX, segY); const mat = new THREE.MeshStandardMaterial({color:0x3a4a6d, roughness:0.92, metalness:0.0, side: THREE.DoubleSide}); const mesh = new THREE.Mesh(geo, mat); mesh.rotation.x = 0; scene.add(mesh); const halfW = stripWidth/2, halfH = stripHeight/2;
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x0a0d14, 0.7); scene.add(hemi); const dir = new THREE.DirectionalLight(0xffffff, 0.95); dir.position.set(0.7,1,1.1); scene.add(dir); const ambient = new THREE.AmbientLight(0x1a2233, 0.25); scene.add(ambient);
+  const underTex = (()=>{ const s=256; const c=document.createElement('canvas'); c.width=s; c.height=s; const g=c.getContext('2d'); const rg=g.createRadialGradient(s/2,s/2,10, s/2,s/2,s/2); rg.addColorStop(0,'rgba(0,0,0,0.5)'); rg.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=rg; g.fillRect(0,0,s,s); return new THREE.CanvasTexture(c); })(); const shadow = new THREE.Mesh(new THREE.PlaneGeometry(stripWidth+80, stripHeight+40), new THREE.MeshBasicMaterial({map:underTex, transparent:true, opacity:0.35, depthWrite:false})); shadow.position.set(0,-2,-40); scene.add(shadow);
+  const paperTex = (()=>{ const cw=512,ch=256; const c=document.createElement('canvas'); c.width=cw; c.height=ch; const g=c.getContext('2d'); g.fillStyle='#2b3955'; g.fillRect(0,0,cw,ch); g.globalAlpha=0.08; g.strokeStyle='#ffffff'; for(let i=-ch;i<cw;i+=6){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+ch,ch); g.stroke(); } g.globalAlpha=0.06; g.fillStyle='#ffffff'; for(let i=0;i<1200;i++){ const x=Math.random()*cw, y=Math.random()*ch; g.fillRect(x,y,1,1);} const tex=new THREE.CanvasTexture(c); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.repeat.set(2,1); tex.anisotropy=renderer.capabilities.getMaxAnisotropy?.()||1; return tex; })(); const paperBump = (()=>{ const cw=512,ch=256; const c=document.createElement('canvas'); c.width=cw;c.height=ch; const g=c.getContext('2d'); g.fillStyle='#808080'; g.fillRect(0,0,cw,ch); g.globalAlpha=0.12; g.strokeStyle='#a0a0a0'; for(let i=-ch;i<cw;i+=5){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+ch,ch); g.stroke(); } g.globalAlpha=0.12; g.fillStyle='#a0a0a0'; for(let i=0;i<1500;i++){ const x=Math.random()*cw,y=Math.random()*ch; g.fillRect(x,y,1,1);} const tex=new THREE.CanvasTexture(c); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.repeat.set(2,1); return tex; })(); mat.map = paperTex; mat.bumpMap=paperBump; mat.bumpScale=1.0; mat.needsUpdate=true;
+  const prizePlaneGeo = new THREE.PlaneGeometry(stripWidth-40, stripHeight-20, 1, 1); const prizeMat = new THREE.MeshBasicMaterial({transparent:true}); const prizePlane = new THREE.Mesh(prizePlaneGeo, prizeMat); prizePlane.position.z = -30; scene.add(prizePlane);
+  const edgeTex = (()=>{ const w=256,h=8; const c=document.createElement('canvas'); c.width=w;c.height=h; const g=c.getContext('2d'); const gr=g.createLinearGradient(0,0,w,0); gr.addColorStop(0,'rgba(0,0,0,0)'); gr.addColorStop(0.6,'rgba(0,0,0,0.35)'); gr.addColorStop(1,'rgba(0,0,0,0.6)'); g.fillStyle=gr; g.fillRect(0,0,w,h); const tex=new THREE.CanvasTexture(c); tex.wrapS=THREE.ClampToEdgeWrapping; tex.wrapT=THREE.ClampToEdgeWrapping; return tex; })(); const edgeMat = new THREE.MeshBasicMaterial({map:edgeTex, transparent:true, depthWrite:false, opacity:0.55}); const edgePlane = new THREE.Mesh(new THREE.PlaneGeometry(120, stripHeight-10, 1, 1), edgeMat); edgePlane.position.set(halfW,0,-22); scene.add(edgePlane);
+  const dustTex = (()=>{ const s=32; const c=document.createElement('canvas'); c.width=s;c.height=s; const g=c.getContext('2d'); const gr=g.createRadialGradient(s/2,s/2,1, s/2,s/2,s/2); gr.addColorStop(0,'rgba(255,255,255,0.9)'); gr.addColorStop(1,'rgba(255,255,255,0.0)'); g.fillStyle=gr; g.fillRect(0,0,s,s); return new THREE.CanvasTexture(c); })(); const DUST_POOL=40; const dustSprites=[]; for(let i=0;i<DUST_POOL;i++){ const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:dustTex, transparent:true, opacity:0})); spr.scale.set(8,8,1); spr.position.set(9999,9999,-15); spr.userData.life=0; spr.userData.vx=0; spr.userData.vy=0; scene.add(spr); dustSprites.push(spr);} function spawnDust(x,y,speed){ const spr=dustSprites.find(s=>s.userData.life<=0)||dustSprites[0]; spr.position.set(x, y+(Math.random()*10-5), -18); spr.userData.vx = -1.5 - Math.random()*1.5 - speed*0.02; spr.userData.vy = 0.2 + Math.random()*0.8; spr.userData.life=1.0; spr.material.opacity=0.8; const s=6+Math.random()*8; spr.scale.set(s,s,1); }
+
+  const neededZ = ((stripHeight/2) / Math.tan((fov*Math.PI/180)/2)) + 80; camera.position.set(0,0,neededZ);
+  three = { renderer, scene, camera, mesh, prizePlane, animId:0, isDragging:false, dragX:0, dragY:0, width, height, done:false };
+
+  const getRect = ()=> container.getBoundingClientRect();
+  const screenToLocal = (x,y)=>{ const r=getRect(); const nx=(x - r.left) - r.width/2; const ny=(y - r.top) - r.height/2; return {x:nx, y:-ny}; };
+  const onDown = (ev)=>{ if(three.done) return; const pt=('touches' in ev)? ev.touches[0] : ev; let {x,y} = screenToLocal(pt.clientX, pt.clientY); const startZone = halfW - Math.min(120, stripWidth*0.2); if(x < startZone) x = halfW - 6; try{ initTearAudio(); playTearSnippet(1.0); }catch{} if(drawContext.decided==null){ drawContext.decided = pickPrize(drawContext.board); if(drawContext.decided){ const prizeName = (drawContext.board?.prizes?.find(p=>p.label===drawContext.decided)?.name) || ''; const tex = makePrizeTexture(drawContext.decided, prizeName, stripWidth-40, stripHeight-20); prizeMat.map=tex; prizeMat.needsUpdate=true; } } three.isDragging=true; three.dragX=x; three.dragY=y; renderer.domElement.style.cursor='grabbing'; };
+  const onMove = (ev)=>{ if(!three.isDragging||three.done) return; const pt=('touches' in ev)? ev.touches[0] : ev; const {x,y} = screenToLocal(pt.clientX, pt.clientY); three.dragX=x; three.dragY=y; };
+  const onUp = ()=>{ if(!three.done){ three.isDragging=false; renderer.domElement.style.cursor='grab'; stopTearAudio(); } };
+  container.addEventListener('mousedown', onDown); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+  const touchStartHandler=(e)=>{ e.preventDefault(); onDown(e); }; const touchMoveHandler=(e)=>{ e.preventDefault(); onMove(e); }; const touchEndHandler=(e)=>{ e.preventDefault(); onUp(e); }; container.addEventListener('touchstart', touchStartHandler, {passive:false}); window.addEventListener('touchmove', touchMoveHandler, {passive:false}); window.addEventListener('touchend', touchEndHandler, {passive:false}); container.style.touchAction='none'; container.style.cursor='grab';
+
+  const base = geo.attributes.position.array.slice(); let aboveFrames=0; const cols=segX+1, rows=segY+1; const jagRows = new Array(rows).fill(0).map((_,iy)=>{ const r=(Math.sin(iy*1.73)+Math.cos(iy*0.51))*0.5 + (Math.random()*2-1)*0.4; return r*10; }); let stepIdxPrev=-1; three._pulseT=0;
+  const animate = ()=>{ three.animId = requestAnimationFrame(animate); const pos=geo.attributes.position.array; let peeled=0; let lastP=three._lastPeeledAvg || 0; const globalPullX=Math.min(0, three.dragX - (halfW - 10)); const pullStrengthGlobal = -globalPullX; let influenceW = Math.min(stripWidth, 60 + pullStrengthGlobal*1.2); const steps=8; const k = influenceW / stripWidth; const stepIdx=Math.max(0, Math.min(steps, Math.floor(k*steps))); const kq = stepIdx/steps; const influenceWq = Math.max(20, kq*stripWidth); const foldX = halfW - influenceWq; if(three.isDragging && stepIdx > stepIdxPrev){ stepIdxPrev=stepIdx; three._pulseT=0.28; snapBurst(); for(let i=0;i<4;i++) spawnDust(foldX+2, (Math.random()-0.5)*(stripHeight-20), 30+stepIdx*4); } if(three._pulseT>0) three._pulseT=Math.max(0, three._pulseT-0.04);
+    for(let iy=0; iy<rows; iy++){
+      for(let ix=0; ix<cols; ix++){
+        const i=(iy*cols+ix)*3; const x0=base[i], y0=base[i+1], z0=base[i+2]; if(three.isDragging){ const distFromRight=(halfW - x0) - jagRows[iy]; const falloff=Math.max(0, Math.min(1, 1 - distFromRight / influenceWq)); const fall2=Math.pow(falloff,2.1); const pullX=Math.min(0, three.dragX - (halfW - 10)); const pullY=(three.dragY-0)*0.3; let dx=pullX*falloff; if(three._pulseT>0){ dx *= (1 + 0.25*three._pulseT); } const dy=pullY*falloff*(0.5 + (iy/rows)*0.5)*(ix/cols); const pullStrength=-pullX; const curl = -pullStrength*1.5*fall2*(ix/cols)*(1 - Math.min(1, Math.abs(y0)/halfH)); const twist=(iy/rows - 0.5)*(-pullStrength)*0.18*fall2*(ix/cols); pos[i]=x0+dx; pos[i+1]=y0+dy; pos[i+2]=z0+curl+twist; if(ix===cols-1){ peeled += (halfW - pos[i]); } } else { pos[i]=x0; pos[i+1]=y0; pos[i+2]=z0; } }
+    }
+    geo.attributes.position.needsUpdate=true; if(three.isDragging) geo.computeVertexNormals(); edgePlane.position.x = foldX + 4; edgePlane.scale.x = Math.max(0.6, Math.min(1.6, influenceWq/90)); edgeMat.opacity = 0.35 + Math.min(0.4, pullStrengthGlobal/300);
+    const peeledAvg = three.isDragging ? (peeled / rows) : 0; const speed=Math.max(0, peeledAvg - lastP); three._lastPeeledAvg=peeledAvg; updateTearSound(speed); if(speed>1){ const count=Math.min(3, Math.floor(speed/2)); for(let i=0;i<count;i++) spawnDust(foldX+2, (Math.random()-0.5)*(stripHeight-20), speed); }
+    for(const spr of dustSprites){ if(spr.userData.life>0){ spr.userData.life -= 0.03; spr.position.x += spr.userData.vx; spr.position.y += spr.userData.vy; spr.userData.vy -= 0.03; spr.material.opacity *= 0.94; spr.scale.multiplyScalar(0.985); if(spr.userData.life<=0){ spr.material.opacity=0; spr.position.x=9999; } } }
+    renderer.render(scene, camera);
+    if(peeledAvg > stripWidth*0.8){ aboveFrames++; } else { aboveFrames=0; } if(!three.done && aboveFrames>8){ three.done=true; stopTearAudio(); finishDraw(); }
+  };
+  animate();
+  const onResize=()=>{ const w=container.clientWidth,h=container.clientHeight; renderer.setSize(w,h); camera.aspect=Math.max(0.1,w/h); camera.position.z=((stripHeight/2)/Math.tan((fov*Math.PI/180)/2))+80; camera.updateProjectionMatrix(); }; window.addEventListener('resize', onResize);
+  three._cleanup = ()=>{ cancelAnimationFrame(three.animId); container.removeEventListener('mousedown', onDown); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); container.removeEventListener('touchstart', touchStartHandler, {passive:false}); window.removeEventListener('touchmove', touchMoveHandler, {passive:false}); window.removeEventListener('touchend', touchEndHandler, {passive:false}); window.removeEventListener('resize', onResize); renderer.dispose(); container.removeChild(renderer.domElement); };
+}
+
+function stopThree(){ if(three && three._cleanup){ three._cleanup(); } three = { renderer:null, scene:null, camera:null, mesh:null, animId:0, isDragging:false, dragX:0, dragY:0, width:0, height:0, done:false }; }
+
+function pickPrize(board){ const remaining=[]; const taken=Object.create(null); for(const t of board.tickets){ if(t.result){ taken[t.result]=(taken[t.result]||0)+1; } } for(const p of board.prizes){ const left = Math.max(0, p.count - (taken[p.label]||0)); for(let i=0;i<left;i++) remaining.push(p.label); } if(remaining.length===0) return null; const idx=Math.floor(Math.random()*remaining.length); return remaining[idx]; }
+
+function finishDraw(){ const b=drawContext.board; const t=drawContext.ticket; if(!b||!t) return; const result = drawContext.decided ?? pickPrize(b); if(!result){ ui.reveal.textContent='끝! (남은 상 없음)'; } else { t.result=result; ui.reveal.textContent=`${result}`; triggerConfetti(); } ui.reveal.classList.add('show'); save(); render(); canCloseDraw = true; }
+
+const confettiCtx = ui.confetti.getContext('2d'); let confettiParticles=[]; function triggerConfetti(){ resizeConfetti(); ui.confetti.style.opacity='1'; confettiParticles = Array.from({length:160}, ()=>({ x:Math.random()*ui.confetti.width, y:-20-Math.random()*80, vx:(Math.random()-0.5)*2, vy:2+Math.random()*3, size:4+Math.random()*4, color:`hsl(${Math.floor(Math.random()*360)}, 80%, 60%)`, rot:Math.random()*Math.PI*2, vr:(Math.random()-0.5)*0.3, })); const draw=()=>{ confettiCtx.clearRect(0,0,ui.confetti.width, ui.confetti.height); for(const p of confettiParticles){ p.x+=p.vx; p.y+=p.vy; p.vy+=0.02; p.rot+=p.vr; confettiCtx.save(); confettiCtx.translate(p.x,p.y); confettiCtx.rotate(p.rot); confettiCtx.fillStyle=p.color; confettiCtx.fillRect(-p.size/2,-p.size/2,p.size,p.size); confettiCtx.restore(); } }; let frames=0; const loop=()=>{ frames++; draw(); if(frames<60*2.2){ requestAnimationFrame(loop);} else { confettiCtx.clearRect(0,0,ui.confetti.width, ui.confetti.height); ui.confetti.style.opacity='0'; confettiParticles=[]; } }; loop(); }
+function resizeConfetti(){ ui.confetti.width = window.innerWidth; ui.confetti.height = window.innerHeight; } window.addEventListener('resize', resizeConfetti); resizeConfetti();
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+function makePrizeTexture(label, name, w, h){ const dpr=Math.min(2, window.devicePixelRatio||1); const cw=Math.max(256, Math.round(w*dpr)); const ch=Math.max(128, Math.round(h*dpr)); const c=document.createElement('canvas'); c.width=cw; c.height=ch; const g=c.getContext('2d'); g.fillStyle='#0e1421'; g.fillRect(0,0,cw,ch); const grad=g.createRadialGradient(cw*0.5, ch*0.5, 10, cw*0.5, ch*0.5, Math.max(cw,ch)*0.7); grad.addColorStop(0,'rgba(255,255,255,0.08)'); grad.addColorStop(1,'rgba(255,255,255,0.0)'); g.fillStyle=grad; g.fillRect(0,0,cw,ch); g.fillStyle='#ffffff'; g.textAlign='center'; g.shadowColor='rgba(0,0,0,0.4)'; g.shadowBlur=10; g.shadowOffsetY=2; // Label (big)
+  const labelPx=Math.floor(ch*0.48); g.font=`${labelPx}px system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif`; g.textBaseline='alphabetic'; g.fillText(String(label||''), cw*0.5, ch*0.52 - Math.max(10, ch*0.06)); // Name (smaller, below)
+  if(name){ const namePx=Math.floor(ch*0.18); g.font=`${namePx}px system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif`; g.globalAlpha=0.95; g.textBaseline='hanging'; g.fillText(String(name), cw*0.5, ch*0.52 + Math.max(4, ch*0.02)); g.globalAlpha=1; }
+  const tex=new THREE.CanvasTexture(c); tex.anisotropy=4; tex.needsUpdate=true; return tex; }
+
+load(); render();
+// Try to restore autosave folder early (non-blocking)
+ensureAutoDir();
+      </script>
+  </body>
+  </html>
