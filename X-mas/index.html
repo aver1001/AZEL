@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AZEL - Christmas & 1st Anniversary</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Playfair+Display:wght@400;500;600;700&family=Great+Vibes&family=Cormorant+Garamond:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background: #030306;
+            min-height: 100vh;
+            overflow-x: hidden;
+            color: #fff;
+        }
+
+        /* ============ INTRO VIDEO ============ */
+        .intro-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+            transition: opacity 1s ease, visibility 1s ease;
+        }
+
+        .intro-screen.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .intro-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .intro-video.playing {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .intro-video.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .intro-logo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            height: 240px;
+            width: auto;
+            opacity: 0;
+            transition: opacity 2s ease;
+        }
+
+        .intro-logo.visible {
+            opacity: 1;
+        }
+
+        .intro-screen.logo-phase {
+            background: #fff;
+        }
+
+        /* ============ LETTER ENVELOPE ============ */
+        .letter-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(180deg, #1a0a0a 0%, #0d1a0d 50%, #0a0a1a 100%);
+            cursor: pointer;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.8s ease, visibility 0.8s ease;
+        }
+
+        .letter-container.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .letter-container.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        /* Loading Screen */
+        .loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+
+        .loading-screen.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 2px solid rgba(255, 215, 0, 0.2);
+            border-top-color: #ffd700;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .loading-text {
+            margin-top: 15px;
+            color: rgba(255, 215, 0, 0.6);
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.8rem;
+            letter-spacing: 3px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .envelope {
+            width: 280px;
+            height: 180px;
+            position: relative;
+            perspective: 1000px;
+            margin-bottom: 30px;
+            z-index: 10;
+        }
+
+        .envelope-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(145deg, #c9a962 0%, #8b6914 100%);
+            border-radius: 8px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .envelope-front {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(145deg, #d4b86a 0%, #9a7b1f 100%);
+            border-radius: 8px;
+            clip-path: polygon(0 0, 50% 45%, 100% 0, 100% 100%, 0 100%);
+        }
+
+        .envelope-flap {
+            position: absolute;
+            width: 100%;
+            height: 90px;
+            top: 0;
+            background: linear-gradient(180deg, #e8d08a 0%, #c9a962 100%);
+            clip-path: polygon(0 0, 50% 100%, 100% 0);
+            transform-origin: top center;
+            transition: transform 0.6s ease;
+            z-index: 2;
+        }
+
+        .letter-container:hover .envelope-flap {
+            transform: rotateX(30deg);
+        }
+
+        .envelope-seal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
+            background: radial-gradient(circle, #8B0000 0%, #5c0000 100%);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            z-index: 3;
+        }
+
+        .envelope-seal::after {
+            content: '✦';
+            color: #ffd700;
+            font-size: 1.2rem;
+        }
+
+        .letter-text {
+            color: rgba(255, 215, 0, 0.8);
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.9rem;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            animation: pulse-text 2s ease-in-out infinite;
+            z-index: 10;
+        }
+
+        @keyframes pulse-text {
+
+            0%,
+            100% {
+                opacity: 0.6;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .snowfall-bg {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .snow-particle {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.6);
+            opacity: 0;
+            top: -20px;
+            animation: snow-fall-letter 10s linear infinite;
+        }
+
+        @keyframes snow-fall-letter {
+            0% {
+                transform: translateY(0);
+                opacity: 0;
+            }
+
+            5% {
+                opacity: 0.7;
+            }
+
+            95% {
+                opacity: 0.7;
+            }
+
+            100% {
+                transform: translateY(calc(100vh + 40px));
+                opacity: 0;
+            }
+        }
+
+        /* ============ OPENING ANIMATION ============ */
+        .opening {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+            transition: opacity 1.5s ease, visibility 1.5s ease;
+        }
+
+        .opening.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .brightness-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            z-index: 5;
+            animation: brightnessReveal 3s ease-out forwards;
+        }
+
+        @keyframes brightnessReveal {
+            0% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+
+        .center-glow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 0;
+            height: 0;
+            background: radial-gradient(circle, rgba(255, 215, 0, 0.3) 0%, rgba(255, 215, 0, 0.1) 30%, transparent 70%);
+            border-radius: 50%;
+            z-index: 4;
+            animation: glowExpand 3s ease-out forwards;
+        }
+
+        @keyframes glowExpand {
+            0% {
+                width: 0;
+                height: 0;
+                opacity: 0;
+            }
+
+            30% {
+                opacity: 1;
+            }
+
+            100% {
+                width: 150vmax;
+                height: 150vmax;
+                opacity: 1;
+            }
+        }
+
+        .light-rays {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200vmax;
+            height: 200vmax;
+            z-index: 3;
+            opacity: 0;
+            animation: raysAppear 2s ease-out 1s forwards;
+        }
+
+        @keyframes raysAppear {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.5);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+        }
+
+        .light-ray {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 2px;
+            height: 50%;
+            background: linear-gradient(to top, rgba(255, 215, 0, 0.2) 0%, transparent 100%);
+            transform-origin: bottom center;
+        }
+
+        .vignette {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center, transparent 0%, #000 100%);
+            z-index: 6;
+            animation: vignetteFade 4s ease-out forwards;
+        }
+
+        @keyframes vignetteFade {
+            0% {
+                opacity: 1;
+                background: radial-gradient(ellipse at center, transparent 0%, #000 70%);
+            }
+
+            100% {
+                opacity: 0.3;
+                background: radial-gradient(ellipse at center, transparent 30%, #000 100%);
+            }
+        }
+
+        .stars {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        .star {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: #fff;
+            border-radius: 50%;
+            animation: twinkle 3s ease-in-out infinite;
+        }
+
+        @keyframes twinkle {
+
+            0%,
+            100% {
+                opacity: 0.2;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .golden-dust {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .dust {
+            position: absolute;
+            width: 3px;
+            height: 3px;
+            background: #ffd700;
+            border-radius: 50%;
+            opacity: 0;
+            animation: dustFloat 8s ease-in-out infinite;
+        }
+
+        @keyframes dustFloat {
+            0% {
+                transform: translateY(100vh) scale(0);
+                opacity: 0;
+            }
+
+            20% {
+                opacity: 0.8;
+            }
+
+            80% {
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: translateY(-100px) scale(1);
+                opacity: 0;
+            }
+        }
+
+        .opening-content {
+            text-align: center;
+            z-index: 10;
+        }
+
+        .opening-subtitle {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1rem;
+            letter-spacing: 8px;
+            color: rgba(255, 215, 0, 0.8);
+            text-transform: uppercase;
+            opacity: 0;
+            animation: fadeUp 1s ease-out 0.5s forwards;
+        }
+
+        .opening-title {
+            font-family: 'Great Vibes', cursive;
+            font-size: 3.5rem;
+            color: #fff;
+            margin: 15px 0;
+            opacity: 0;
+            animation: fadeUp 1s ease-out 1s forwards;
+            text-shadow: 0 0 40px rgba(255, 215, 0, 0.3);
+        }
+
+        .opening-year {
+            font-family: 'Playfair Display', serif;
+            font-size: 5rem;
+            font-weight: 700;
+            background: linear-gradient(180deg, #ffd700 0%, #b8860b 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            opacity: 0;
+            animation: fadeUp 1s ease-out 1.5s forwards;
+            line-height: 1;
+        }
+
+        .opening-brand {
+            font-family: 'Playfair Display', serif;
+            font-size: 2rem;
+            letter-spacing: 15px;
+            color: #ffd700;
+            margin-top: 20px;
+            opacity: 0;
+            animation: fadeUp 1s ease-out 2s forwards;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .opening-btn {
+            margin-top: 50px;
+            padding: 18px 50px;
+            background: transparent;
+            border: 1px solid rgba(255, 215, 0, 0.5);
+            color: #ffd700;
+            font-size: 0.9rem;
+            letter-spacing: 5px;
+            cursor: pointer;
+            opacity: 0;
+            animation: fadeUp 1s ease-out 2.5s forwards;
+            transition: all 0.4s ease;
+        }
+
+        .opening-btn:hover {
+            background: rgba(255, 215, 0, 0.1);
+            border-color: #ffd700;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);
+        }
+
+        /* ============ INVITATION CARD ============ */
+        .invitation-wrapper {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px 20px;
+            background:
+                radial-gradient(ellipse at top, rgba(139, 69, 19, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom, rgba(0, 100, 0, 0.1) 0%, transparent 50%),
+                #030306;
+        }
+
+        .invitation-card {
+            width: 100%;
+            max-width: 420px;
+            background: linear-gradient(180deg, rgba(20, 20, 25, 0.98) 0%, rgba(15, 15, 18, 1) 100%);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            border-radius: 3px;
+            position: relative;
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        .corner {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            pointer-events: none;
+        }
+
+        .corner-tl {
+            top: 0;
+            left: 0;
+            border-top: 2px solid #b8860b;
+            border-left: 2px solid #b8860b;
+        }
+
+        .corner-tr {
+            top: 0;
+            right: 0;
+            border-top: 2px solid #b8860b;
+            border-right: 2px solid #b8860b;
+        }
+
+        .corner-bl {
+            bottom: 0;
+            left: 0;
+            border-bottom: 2px solid #b8860b;
+            border-left: 2px solid #b8860b;
+        }
+
+        .corner-br {
+            bottom: 0;
+            right: 0;
+            border-bottom: 2px solid #b8860b;
+            border-right: 2px solid #b8860b;
+        }
+
+        .inner-border {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            bottom: 15px;
+            border: 1px solid rgba(255, 215, 0, 0.15);
+            pointer-events: none;
+        }
+
+        .card-content {
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+        }
+
+        .card-header {
+            margin-bottom: 25px;
+        }
+
+        .card-label {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.75rem;
+            letter-spacing: 5px;
+            color: rgba(255, 215, 0, 0.7);
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .card-title {
+            font-family: 'Great Vibes', cursive;
+            font-size: 2.2rem;
+            color: #fff;
+            line-height: 1.2;
+            margin-bottom: 6px;
+        }
+
+        .card-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .card-brand-text {
+            font-family: 'Great Vibes', cursive;
+            font-size: 2rem;
+            color: #fff;
+            text-shadow: 0 0 40px rgba(255, 215, 0, 0.3);
+        }
+
+        .card-brand-logo {
+            height: 56px;
+            width: auto;
+            filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.3));
+        }
+
+        .anniversary-inline {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .anniversary-num-small {
+            font-family: 'Playfair Display', serif;
+            font-size: 2rem;
+            font-weight: 600;
+            background: linear-gradient(180deg, #ffd700 0%, #b8860b 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .anniversary-text-small {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.9rem;
+            letter-spacing: 3px;
+            color: rgba(255, 215, 0, 0.8);
+            text-transform: uppercase;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin: 25px 0;
+        }
+
+        .divider-line {
+            width: 50px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.5), transparent);
+        }
+
+        .divider-icon {
+            color: #b8860b;
+            font-size: 0.7rem;
+        }
+
+        .message-section {
+            margin-bottom: 25px;
+        }
+
+        .message-text {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.8;
+            font-weight: 300;
+        }
+
+        .message-text .highlight {
+            color: #ffd700;
+            font-weight: 500;
+        }
+
+        .event-info {
+            background: rgba(255, 215, 0, 0.05);
+            border: 1px solid rgba(255, 215, 0, 0.15);
+            padding: 18px;
+            margin-bottom: 20px;
+        }
+
+        .event-label {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.65rem;
+            letter-spacing: 3px;
+            color: rgba(255, 215, 0, 0.6);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .event-date {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.1rem;
+            color: #ffd700;
+            letter-spacing: 1px;
+        }
+
+        .card-footer {
+            padding-top: 15px;
+        }
+
+        .footer-text {
+            font-size: 0.65rem;
+            color: rgba(255, 255, 255, 0.3);
+            letter-spacing: 2px;
+        }
+
+        /* ============ CHRISTMAS ORNAMENTS ============ */
+        .ornaments-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 15;
+            overflow: hidden;
+        }
+
+        .ornament {
+            position: absolute;
+            top: -10px;
+            animation: ornamentSwing 3s ease-in-out infinite;
+        }
+
+        .ornament-string {
+            width: 2px;
+            height: 40px;
+            background: linear-gradient(180deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 215, 0, 0.6) 100%);
+            margin: 0 auto;
+        }
+
+        .ornament-ball {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            position: relative;
+            box-shadow:
+                inset -5px -5px 15px rgba(0, 0, 0, 0.3),
+                inset 5px 5px 15px rgba(255, 255, 255, 0.2),
+                0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .ornament-ball::before {
+            content: '';
+            position: absolute;
+            top: 5px;
+            left: 8px;
+            width: 8px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+        }
+
+        .ornament-ball::after {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 12px;
+            height: 10px;
+            background: #ffd700;
+            border-radius: 3px 3px 0 0;
+        }
+
+        .ornament-1 {
+            left: 5%;
+            animation-delay: 0s;
+        }
+
+        .ornament-2 {
+            right: 8%;
+            animation-delay: 0.5s;
+        }
+
+        .ornament-3 {
+            left: 15%;
+            animation-delay: 1s;
+        }
+
+        .ornament-4 {
+            right: 3%;
+            animation-delay: 1.5s;
+        }
+
+        .ornament-5 {
+            left: 25%;
+            animation-delay: 0.3s;
+        }
+
+        .ornament-6 {
+            right: 20%;
+            animation-delay: 0.8s;
+        }
+
+        .ornament-1 .ornament-ball {
+            background: radial-gradient(circle at 30% 30%, #ff6b6b 0%, #c0392b 100%);
+        }
+
+        .ornament-2 .ornament-ball {
+            background: radial-gradient(circle at 30% 30%, #ffd700 0%, #b8860b 100%);
+        }
+
+        .ornament-3 .ornament-ball {
+            background: radial-gradient(circle at 30% 30%, #2ecc71 0%, #1a5c38 100%);
+        }
+
+        .ornament-4 .ornament-ball {
+            background: radial-gradient(circle at 30% 30%, #9b59b6 0%, #5b2c6f 100%);
+        }
+
+        .ornament-5 .ornament-ball {
+            background: radial-gradient(circle at 30% 30%, #3498db 0%, #1a5276 100%);
+        }
+
+        .ornament-6 .ornament-ball {
+            background: radial-gradient(circle at 30% 30%, #e74c3c 0%, #922b21 100%);
+        }
+
+        .ornament-1 .ornament-string {
+            height: 50px;
+        }
+
+        .ornament-2 .ornament-string {
+            height: 35px;
+        }
+
+        .ornament-3 .ornament-string {
+            height: 60px;
+        }
+
+        .ornament-4 .ornament-string {
+            height: 45px;
+        }
+
+        .ornament-5 .ornament-string {
+            height: 70px;
+        }
+
+        .ornament-6 .ornament-string {
+            height: 55px;
+        }
+
+        @keyframes ornamentSwing {
+
+            0%,
+            100% {
+                transform: rotate(-3deg);
+            }
+
+            50% {
+                transform: rotate(3deg);
+            }
+        }
+
+        /* ============ FLOOR IMAGE ============ */
+        .floor-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: auto;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        .floor-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* Snow Effect */
+        .snow-container {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            overflow: hidden;
+        }
+
+        .snowflake {
+            position: absolute;
+            color: #fff;
+            opacity: 0;
+            animation: snowFall linear infinite;
+        }
+
+        @keyframes snowFall {
+            0% {
+                transform: translateY(-10px) rotate(0deg);
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 0.6;
+            }
+
+            90% {
+                opacity: 0.6;
+            }
+
+            100% {
+                transform: translateY(100vh) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        /* Music Control Button */
+        .music-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 215, 0, 0.2);
+            border: 1px solid rgba(255, 215, 0, 0.5);
+            color: #ffd700;
+            font-size: 1.3rem;
+            cursor: pointer;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .music-btn:hover {
+            background: rgba(255, 215, 0, 0.3);
+            transform: scale(1.1);
+        }
+
+        .music-btn.playing {
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 0 20px 5px rgba(255, 215, 0, 0.3);
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 400px) {
+            .card-content {
+                padding: 50px 25px;
+            }
+
+            .opening-title {
+                font-size: 2.8rem;
+            }
+
+            .opening-year {
+                font-size: 4rem;
+            }
+
+            .card-title {
+                font-size: 2.3rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Intro Video Screen -->
+    <div class="intro-screen" id="introScreen">
+        <!-- Loading Screen -->
+        <div class="loading-screen" id="loadingScreen">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Loading...</p>
+        </div>
+
+        <!-- Letter Envelope (Click to Start) -->
+        <div class="letter-container" id="letterContainer">
+            <div class="snowfall-bg" id="letterSnow"></div>
+            <div class="envelope">
+                <div class="envelope-back"></div>
+                <div class="envelope-front"></div>
+                <div class="envelope-flap"></div>
+                <div class="envelope-seal"></div>
+            </div>
+            <p class="letter-text">Tap to Open</p>
+        </div>
+
+        <!-- Video (plays after envelope click) -->
+        <video class="intro-video" id="introVideo" playsinline preload="auto">
+            <source src="intro.mp4" type="video/mp4">
+        </video>
+        <img src="Azel_clogo.png" alt="AZEL" class="intro-logo" id="introLogo">
+    </div>
+
+    <!-- Christmas Ornaments -->
+    <div class="ornaments-container" id="ornamentsContainer">
+        <div class="ornament ornament-1">
+            <div class="ornament-string"></div>
+            <div class="ornament-ball"></div>
+        </div>
+        <div class="ornament ornament-2">
+            <div class="ornament-string"></div>
+            <div class="ornament-ball"></div>
+        </div>
+        <div class="ornament ornament-3">
+            <div class="ornament-string"></div>
+            <div class="ornament-ball"></div>
+        </div>
+        <div class="ornament ornament-4">
+            <div class="ornament-string"></div>
+            <div class="ornament-ball"></div>
+        </div>
+        <div class="ornament ornament-5">
+            <div class="ornament-string"></div>
+            <div class="ornament-ball"></div>
+        </div>
+        <div class="ornament ornament-6">
+            <div class="ornament-string"></div>
+            <div class="ornament-ball"></div>
+        </div>
+    </div>
+
+    <!-- Snow -->
+    <div class="snow-container" id="snowContainer"></div>
+
+    <!-- Floor -->
+    <div class="floor-container">
+        <img src="snow.png" alt="Snow Floor">
+    </div>
+
+    <!-- Background Music -->
+    <audio id="bgMusic" loop preload="auto">
+        <source src="jingle_bell.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- Music Control Button -->
+    <button class="music-btn" id="musicBtn" title="음악 재생/정지">🔇</button>
+
+    <!-- Opening Animation -->
+    <div class="opening" id="opening">
+        <div class="brightness-overlay"></div>
+        <div class="vignette"></div>
+        <div class="center-glow"></div>
+        <div class="light-rays" id="lightRays"></div>
+        <div class="stars" id="stars"></div>
+        <div class="golden-dust" id="goldenDust"></div>
+
+        <div class="opening-content">
+            <p class="opening-subtitle">You're Invited</p>
+            <h1 class="opening-title">Merry Christmas</h1>
+            <p class="opening-year">2024</p>
+            <p class="opening-brand">AZEL</p>
+            <button class="opening-btn" onclick="openInvitation()">OPEN</button>
+        </div>
+    </div>
+
+    <!-- Invitation Card -->
+    <div class="invitation-wrapper">
+        <div class="invitation-card">
+            <div class="corner corner-tl"></div>
+            <div class="corner corner-tr"></div>
+            <div class="corner corner-bl"></div>
+            <div class="corner corner-br"></div>
+            <div class="inner-border"></div>
+
+            <div class="card-content">
+                <div class="card-header">
+                    <p class="card-label">Invitation</p>
+                    <h1 class="card-title">Merry Christmas</h1>
+                    <div class="card-brand">
+                        <span class="card-brand-text">&</span>
+                        <img src="azel_white.png" alt="AZEL" class="card-brand-logo">
+                    </div>
+                    <div class="anniversary-inline">
+                        <span class="anniversary-num-small">1</span>
+                        <span class="anniversary-text-small">st Anniversary</span>
+                    </div>
+                </div>
+
+                <div class="divider">
+                    <span class="divider-line"></span>
+                    <span class="divider-icon">✦</span>
+                    <span class="divider-line"></span>
+                </div>
+
+                <div class="message-section">
+                    <p class="message-text">
+                        소중한 고객님께<br><br>
+                        여러분의 사랑 덕분에<br>
+                        <span class="highlight">첫 번째 크리스마스</span>와<br>
+                        <span class="highlight">1주년</span>을 맞이하게 되었습니다.<br><br>
+                        감사의 마음을 담아<br>
+                        특별한 이벤트에 초대합니다.
+                    </p>
+                </div>
+
+                <div class="event-info">
+                    <p class="event-label">Event Period</p>
+                    <p class="event-date">2024. 12. 20 — 12. 25</p>
+                </div>
+
+                <div class="card-footer">
+                    <p class="footer-text">WITH LOVE, AZEL</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Open Invitation
+        function openInvitation() {
+            document.getElementById('opening').classList.add('hidden');
+            playMusicOnOpen();
+        }
+
+        // Create Light Rays
+        function createLightRays() {
+            const container = document.getElementById('lightRays');
+            for (let i = 0; i < 12; i++) {
+                const ray = document.createElement('div');
+                ray.className = 'light-ray';
+                ray.style.transform = `rotate(${i * 30}deg)`;
+                container.appendChild(ray);
+            }
+        }
+
+        // Create Stars
+        function createStars() {
+            const container = document.getElementById('stars');
+            for (let i = 0; i < 80; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.animationDelay = Math.random() * 3 + 's';
+                star.style.width = Math.random() * 2 + 1 + 'px';
+                star.style.height = star.style.width;
+                container.appendChild(star);
+            }
+        }
+
+        // Create Golden Dust
+        function createGoldenDust() {
+            const container = document.getElementById('goldenDust');
+            for (let i = 0; i < 30; i++) {
+                const dust = document.createElement('div');
+                dust.className = 'dust';
+                dust.style.left = Math.random() * 100 + '%';
+                dust.style.animationDelay = Math.random() * 8 + 's';
+                dust.style.animationDuration = (Math.random() * 4 + 6) + 's';
+                container.appendChild(dust);
+            }
+        }
+
+        // Create Snow
+        function createSnow() {
+            const container = document.getElementById('snowContainer');
+            const snowflakes = ['❄', '❅', '❆'];
+
+            setInterval(() => {
+                const snow = document.createElement('div');
+                snow.className = 'snowflake';
+                snow.textContent = snowflakes[Math.floor(Math.random() * snowflakes.length)];
+                snow.style.left = Math.random() * 100 + '%';
+                snow.style.fontSize = (Math.random() * 10 + 8) + 'px';
+                snow.style.animationDuration = (Math.random() * 5 + 8) + 's';
+                container.appendChild(snow);
+
+                setTimeout(() => snow.remove(), 13000);
+            }, 400);
+        }
+
+        // Auto open after 8 seconds
+        setTimeout(() => {
+            if (!document.getElementById('opening').classList.contains('hidden')) {
+                openInvitation();
+            }
+        }, 8000);
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            createLightRays();
+            createStars();
+            createGoldenDust();
+            createSnow();
+            initMusicControl();
+            initIntroVideo();
+        });
+
+        // Intro Video Control
+        function initIntroVideo() {
+            const video = document.getElementById('introVideo');
+            const logo = document.getElementById('introLogo');
+            const introScreen = document.getElementById('introScreen');
+            const letterContainer = document.getElementById('letterContainer');
+            const loadingScreen = document.getElementById('loadingScreen');
+            const music = document.getElementById('bgMusic');
+
+            // Create snow for letter screen
+            createLetterSnow();
+
+            // Function to show letter envelope
+            function showLetterEnvelope() {
+                if (!letterContainer.classList.contains('visible')) {
+                    loadingScreen.classList.add('hidden');
+                    letterContainer.classList.add('visible');
+                }
+            }
+
+            // Multiple fallback strategies for mobile compatibility
+            // 1. canplaythrough (desktop)
+            video.addEventListener('canplaythrough', showLetterEnvelope, { once: true });
+
+            // 2. loadeddata (works better on some mobile)
+            video.addEventListener('loadeddata', showLetterEnvelope, { once: true });
+
+            // 3. loadedmetadata (minimal but enough to start)
+            video.addEventListener('loadedmetadata', showLetterEnvelope, { once: true });
+
+            // 4. Fallback: if already loaded
+            if (video.readyState >= 1) {
+                showLetterEnvelope();
+            }
+
+            // 5. Ultimate fallback: timeout after 3 seconds
+            setTimeout(showLetterEnvelope, 3000);
+
+            // Click envelope to start video
+            letterContainer.addEventListener('click', () => {
+                // Hide envelope
+                letterContainer.classList.remove('visible');
+                letterContainer.classList.add('hidden');
+                // Show and play video
+                video.classList.add('playing');
+                video.play();
+
+                // Mobile: Prime audio on user interaction
+                // This allows music to play later even on mobile
+                music.load();
+                // Try to play immediately (will be paused when video has audio)
+                // This "unlocks" the audio on mobile browsers
+                music.volume = 0;
+                music.play().then(() => {
+                    music.pause();
+                    music.currentTime = 0;
+                    music.volume = 1;
+                }).catch(() => { });
+            });
+
+            // Start music 0.5s before video ends
+            let musicStarted = false;
+            video.addEventListener('timeupdate', () => {
+                if (!musicStarted && video.duration - video.currentTime <= 0.5) {
+                    musicStarted = true;
+                    music.play().catch(e => console.log('Autoplay blocked:', e));
+                }
+            });
+
+            // When video ends
+            video.addEventListener('ended', () => {
+                // Hide video and change to white background
+                video.classList.remove('playing');
+                video.classList.add('hidden');
+                introScreen.classList.add('logo-phase');
+
+                // Show logo with fade in
+                setTimeout(() => {
+                    logo.classList.add('visible');
+                }, 100);
+
+                // After 2 seconds, transition to opening screen
+                setTimeout(() => {
+                    introScreen.classList.add('hidden');
+                }, 2200);
+            });
+        }
+
+        // Create snow effect for letter screen
+        function createLetterSnow() {
+            const container = document.getElementById('letterSnow');
+            const snowflakes = ['❄', '❅', '❆', '•'];
+
+            for (let i = 0; i < 30; i++) {
+                const snow = document.createElement('div');
+                snow.className = 'snow-particle';
+                snow.textContent = snowflakes[Math.floor(Math.random() * snowflakes.length)];
+                snow.style.left = Math.random() * 100 + '%';
+                snow.style.fontSize = (Math.random() * 8 + 6) + 'px';
+                snow.style.animationDuration = (Math.random() * 5 + 8) + 's';
+                snow.style.animationDelay = (Math.random() * 5) + 's';
+                container.appendChild(snow);
+            }
+        }
+
+        // Music Control
+        function initMusicControl() {
+            const music = document.getElementById('bgMusic');
+            const btn = document.getElementById('musicBtn');
+
+            btn.addEventListener('click', toggleMusic);
+
+            // Update button state
+            music.addEventListener('play', () => {
+                btn.textContent = '🔊';
+                btn.classList.add('playing');
+            });
+
+            music.addEventListener('pause', () => {
+                btn.textContent = '🔇';
+                btn.classList.remove('playing');
+            });
+        }
+
+        function toggleMusic() {
+            const music = document.getElementById('bgMusic');
+            if (music.paused) {
+                music.play().catch(e => console.log('Autoplay blocked:', e));
+            } else {
+                music.pause();
+            }
+        }
+
+        // Play music when opening invitation
+        function playMusicOnOpen() {
+            const music = document.getElementById('bgMusic');
+            music.play().catch(e => console.log('Autoplay blocked:', e));
+        }
+    </script>
+</body>
+
+</html>
