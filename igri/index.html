@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>IGRI 이그리</title>
+  <meta name="description" content="버려진 담배꽁초에서 태어난 불의 정령이 되어 숲에서 도시까지 집어삼키는 탑다운 액션 로그라이크 .io" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Nanum+Gothic+Coding:wght@400;700&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    { "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    } }
+  </script>
+</head>
+<body>
+  <div id="stage"></div>
+
+  <div id="loading">
+    <div class="ember-dot" aria-hidden="true"></div>
+    <p id="loading-text">불씨를 찾는 중…</p>
+    <noscript>이 게임은 JavaScript가 필요합니다.</noscript>
+  </div>
+
+  <!-- title -->
+  <section id="title" hidden>
+    <div class="title-block">
+      <p class="eyebrow">탑다운 액션 로그라이크 · .io</p>
+      <h1><span class="logo">IGRI</span><span class="logo-ko">이그리</span></h1>
+      <p class="tagline">버려진 담배꽁초에서 태어난 불의 정령.<br />숲을 시작으로 도시까지, 모든 것을 집어삼키는 재앙이 되어라.</p>
+      <div class="title-actions">
+        <button id="btn-start" class="btn primary">불씨 피우기</button>
+        <button id="btn-help" class="btn">조작법</button>
+        <button class="btn ghost" data-action="sound">소리 끄기</button>
+      </div>
+      <div id="help" class="help" hidden>
+        <dl>
+          <dt>이동</dt><dd>WASD · 방향키 · 마우스 왼쪽 버튼(커서 방향) · 게임패드 왼쪽 스틱</dd>
+          <dt>고열 방출</dt><dd>SPACE · SHIFT · 마우스 오른쪽 — 짧은 대쉬. 물에 닿는 순간 쓰면 증발시킵니다</dd>
+          <dt>스킬 선택</dt><dd>1 · 2 · 3 또는 클릭</dd>
+          <dt>일시정지 / 소리</dt><dd>ESC · P / M</dd>
+        </dl>
+        <ol class="tiers">
+          <li><b>불씨</b> 낙엽 · 쓰레기 · 잔디 — 빗방울 · 이슬 · 작은 동물 주의</li>
+          <li><b>모닥불</b> 덤불 · 텐트 · 쓰레기통 — 소방관 · 웅덩이 주의</li>
+          <li><b>들불</b> 아름드리나무 · 오두막 — 소방차 · 국지성 호우 주의</li>
+          <li><b>재앙</b> 숲 전체 · 빌딩 · 랜드마크 — 소방 헬기 · 물의 정령</li>
+        </ol>
+        <p class="help-note">자신보다 작은 것은 태워 몸집을 키우고, 큰 것과 물에 닿으면 작아집니다. 가만히 있어도 연료가 줄어드니 계속 움직이세요. 가스통 · 폐기물 · 송전탑 같은 폭발물을 태우면 새로운 힘을 고를 수 있습니다.</p>
+      </div>
+    </div>
+    <p class="title-foot">three.js 프로토타입 · PC 권장</p>
+  </section>
+
+  <div id="caption" aria-live="polite"></div>
+
+  <!-- HUD -->
+  <div id="hud" hidden data-tier="1">
+    <div class="hud-tl">
+      <div class="tier-row">
+        <span id="tier-num" class="tier-num">T1</span>
+        <span id="tier-name" class="tier-name">불씨</span>
+      </div>
+      <div class="size-bar"><div id="size-fill"></div></div>
+      <div id="size-text" class="size-text"></div>
+    </div>
+    <div class="hud-tc">
+      <div id="timer">16:00</div>
+      <div id="stars" aria-label="지명 수배"></div>
+      <div id="objective" hidden><span class="obj-arrow" aria-hidden="true">▲</span><span id="obj-text"></span></div>
+      <div id="bossbar" hidden>
+        <div class="boss-name">물의 정령</div>
+        <div class="boss-track"><div id="boss-fill"></div></div>
+      </div>
+      <div id="toasts"></div>
+    </div>
+    <div class="hud-tr">
+      <div class="dmg-label">총 재산 피해액</div>
+      <div id="damage">0원</div>
+      <div id="trees"></div>
+    </div>
+    <div class="hud-bl"><div id="skills"></div></div>
+    <div class="hud-bc">
+      <div id="status"></div>
+      <div id="dash" class="dash">
+        <svg viewBox="0 0 40 40" width="46" height="46" aria-hidden="true">
+          <circle cx="20" cy="20" r="18" class="dash-bg" />
+          <circle id="dash-ring" cx="20" cy="20" r="18" class="dash-fg" />
+        </svg>
+        <span>SPACE</span>
+      </div>
+    </div>
+    <div class="hud-br"><canvas id="minimap" width="160" height="280" aria-label="미니맵"></canvas></div>
+    <div id="popups"></div>
+    <div id="banner"></div>
+  </div>
+
+  <!-- skill pick -->
+  <div id="choose" class="overlay" hidden>
+    <div class="choose-inner">
+      <p class="choose-sub"></p>
+      <h2>진화</h2>
+      <div id="cards"></div>
+    </div>
+  </div>
+
+  <!-- pause -->
+  <div id="pause" class="overlay" hidden>
+    <div class="pause-inner">
+      <h2>일시정지</h2>
+      <button id="btn-resume" class="btn primary">계속하기</button>
+      <button class="btn" data-action="sound">소리 끄기</button>
+      <button id="btn-fullscreen" class="btn">전체 화면</button>
+      <button id="btn-restart" class="btn ghost">처음부터</button>
+    </div>
+  </div>
+
+  <!-- ending -->
+  <section id="ending" hidden>
+    <p id="ending-head"></p>
+    <div class="receipt-wrap">
+      <div id="receipt" class="receipt"></div>
+      <button id="continue-receipt" class="btn">계속</button>
+    </div>
+    <div id="photo" aria-hidden="true"></div>
+    <p id="ending-msg"></p>
+    <div id="ending-actions" hidden><button id="to-title" class="btn">타이틀로</button></div>
+  </section>
+
+  <script>
+    if (location.protocol === 'file:') {
+      document.getElementById('loading-text').innerHTML =
+        '브라우저 보안 정책 때문에 파일을 직접 열면 실행되지 않습니다.<br>이 폴더에서 <code>python3 -m http.server</code> 를 실행한 뒤 <code>http://localhost:8000</code> 으로 접속하세요.';
+    }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Igri world viewer</title>
+  <style>html,body{margin:0;height:100%;overflow:hidden;background:#111}</style>
+  <script type="importmap">
+    { "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    } }
+  </script>
+</head>
+<body>
+  <script type="module">
+    // Developer viewer: renders the generated world from a fixed camera.
+    // ?x=..&z=..&r=<player radius>&burn=<radius to pre-burn>
+    import * as THREE from 'three';
+    import { createRenderer } from './js/render.js';
+    import { generateLayout } from './js/world/layout.js';
+    import { BurnMap } from './js/world/burnmap.js';
+    import { createTerrain } from './js/world/terrain.js';
+    import { ObjectField } from './js/world/objects.js';
+    import { FlamePool } from './js/fx/flames.js';
+    import { FX } from './js/fx/particles.js';
+    import { WORLD } from './js/config.js';
+
+    const q = new URLSearchParams(location.search);
+    const t0 = performance.now();
+    const R = createRenderer(document.body);
+    const layout = generateLayout(1337);
+    const t1 = performance.now();
+    const burnMap = new BurnMap(R.renderer);
+    const terrain = createTerrain(R.scene, layout, burnMap);
+    const flames = new FlamePool(R.scene);
+    const fx = new FX(R.scene);
+    const field = new ObjectField(R.scene, layout.placements, { flames, fx, burnMap });
+    if (q.has('nosmoke')) fx.smoke = () => {};
+    if (q.has('noember')) fx.ember = () => {};
+    if (q.has('noflame')) flames.mesh.visible = false;
+    const t2 = performance.now();
+    const fx0 = parseFloat(q.get('x') ?? WORLD.start.x), fz0 = parseFloat(q.get('z') ?? WORLD.start.z);
+    const r = parseFloat(q.get('r') ?? '0.3');
+    const burn = parseFloat(q.get('burn') ?? '0');
+    if (burn > 0) {
+      field.query(fx0, fz0, burn, (id) => { if (field.need[id] < 40) field.ignite(id, 0); });
+    }
+    const focus = new THREE.Vector3(fx0, 0, fz0);
+    R.rig.target.copy(focus);
+    const f = R.framingFor(r);
+    R.rig.pitch = f.pitch; R.rig.dist = f.dist;
+    R.setAtmosphere(parseFloat(q.get('smoke') ?? '0'), parseFloat(q.get('storm') ?? '0'), terrain);
+    let time = 0;
+    function frame(dt) {
+      time += dt;
+      const view = R.updateCamera(dt, focus, r, null);
+      field.update(dt, { tier: 3, focus, viewRadius: view });
+      flames.update(time, R.scene.fog);
+      fx.update(dt, R.camera, R.renderer.domElement.height, R.scene.fog, null);
+      terrain.update(time, R.camera);
+      burnMap.flush(dt);
+      R.grade.uniforms.uTilt.value = r < 1 ? 1 : 0;
+      R.composer.render();
+    }
+    const steps = parseInt(q.get('steps') ?? '30');
+    for (let i = 0; i < steps; i++) frame(1 / 30);
+    window.__info = { gen: Math.round(t1 - t0), build: Math.round(t2 - t1), objects: field.count, groups: field.groups.length, burning: field.burning.length };
+    window.__ready = true;
+    if (!q.has('still')) {
+      let last = performance.now();
+      (function loop() { const now = performance.now(); frame(Math.min(0.05, (now - last) / 1000)); last = now; requestAnimationFrame(loop); })();
+    }
+  </script>
+</body>
+</html>

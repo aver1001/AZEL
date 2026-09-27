@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Igri 모델 카탈로그</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #16120f; color: #ece5da; font-family: 'Noto Sans KR', system-ui, sans-serif; }
+    #labels { position: fixed; inset: 0; pointer-events: none; }
+    #labels span { position: absolute; transform: translate(-50%, 0); font-size: 12px; white-space: nowrap; background: #000a; padding: 2px 6px; border-radius: 3px; }
+    header { position: fixed; left: 16px; top: 12px; font-size: 13px; color: #a99f94; }
+    header b { color: #ffb347; font-size: 16px; margin-right: 8px; }
+  </style>
+  <script type="importmap">
+    { "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    } }
+  </script>
+</head>
+<body>
+  <header><b>모델 카탈로그</b>js/models/ 의 절차적 모델 전부 · 드래그로 회전, 휠로 확대</header>
+  <div id="labels"></div>
+  <script type="module">
+    // Every procedural model in one scene, like a vibe3d registry preview.
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { BUILDERS } from './js/models/catalog.js';
+    import { OBJECTS } from './js/config.js';
+    import * as A from './js/models/agents.js';
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    document.body.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x16120f);
+    scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x6b5a45, 1.4));
+    const sun = new THREE.DirectionalLight(0xffe2b8, 2.4);
+    sun.position.set(3, 6, 4);
+    scene.add(sun);
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2000);
+    const controls = new OrbitControls(camera, renderer.domElement);
+
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const entries = [];
+    for (const key of Object.keys(BUILDERS)) {
+      const parts = BUILDERS[key]();
+      const g = new THREE.Group();
+      for (const p of parts) g.add(new THREE.Mesh(p.geometry, mat));
+      if (key.startsWith('bldg')) g.scale.set(20, key === 'bldgL' ? 80 : key === 'bldgM' ? 40 : 18, 20);
+      const type = key.replace(/\d+$/, '');
+      entries.push({ key, label: (OBJECTS[type] || OBJECTS[key])?.label || key, obj: g });
+    }
+    const agents = {
+      rabbit: ['토끼', A.rabbitGeo()], squirrel: ['다람쥐', A.squirrelGeo()], person: ['주민', A.personGeo(0x4f7fb8)],
+      firefighter: ['소방관', A.firefighterGeo()], truck: ['소방차', A.truckGeo()], heli: ['소방 헬기', A.heliGeo()],
+    };
+    for (const [key, [label, geo]] of Object.entries(agents)) entries.push({ key, label, obj: new THREE.Mesh(geo, mat) });
+
+    // lay out in a grid; every model is normalized to one cell, real size in the label
+    const box = new THREE.Box3();
+    const size = new THREE.Vector3();
+    const CELL = 5, COLS = 9;
+    entries.forEach((e, i) => {
+      box.setFromObject(e.obj);
+      box.getSize(size);
+      const real = Math.max(size.x, size.y, size.z);
+      const k = 3.6 / real;
+      const holder = new THREE.Group();
+      holder.add(e.obj);
+      holder.scale.setScalar(k);
+      const cx = (i % COLS) * CELL, cz = Math.floor(i / COLS) * CELL;
+      holder.position.set(cx, 0, cz);
+      scene.add(holder);
+      e.top = new THREE.Vector3(cx, size.y * k + 0.3, cz);
+      const span = document.createElement('span');
+      span.textContent = `${e.label} · ${real < 1 ? `${Math.round(real * 100)} cm` : `${real.toFixed(real < 10 ? 1 : 0)} m`}`;
+      document.getElementById('labels').appendChild(span);
+      e.span = span;
+    });
+    const rows = Math.ceil(entries.length / COLS);
+    controls.target.set(((COLS - 1) * CELL) / 2, 0, ((rows - 1) * CELL) / 2);
+    camera.position.set(((COLS - 1) * CELL) / 2, 34, ((rows - 1) * CELL) / 2 + 30);
+
+    function resize() {
+      renderer.setSize(innerWidth, innerHeight);
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+    }
+    addEventListener('resize', resize);
+    resize();
+    const v = new THREE.Vector3();
+    (function loop() {
+      requestAnimationFrame(loop);
+      controls.update();
+      renderer.render(scene, camera);
+      for (const e of entries) {
+        v.copy(e.top).project(camera);
+        const vis = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1 && camera.position.distanceTo(e.top) < 90;
+        e.span.style.display = vis ? '' : 'none';
+        if (vis) e.span.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`, (e.span.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`);
+      }
+    })();
+    window.__ready = true;
+  </script>
+</body>
+</html>
