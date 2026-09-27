@@ -16,19 +16,39 @@ export class Input {
     addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
     addEventListener('blur', () => this.keys.clear());
     el.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' && this.touches.size > 1 && e.pointerId !== [...this.touches][0]) return;
       this.mouse.x = (e.clientX / innerWidth) * 2 - 1;
       this.mouse.y = -(e.clientY / innerHeight) * 2 + 1;
       this.mouse.moved = true;
     });
+    this.touches = new Set();
     el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') {
+        this.touches.add(e.pointerId);
+        // first finger steers, any extra finger tap is a dash
+        if (this.touches.size >= 2) {
+          this.pressed.add('dash');
+          return;
+        }
+        this.mouse.x = (e.clientX / innerWidth) * 2 - 1;
+        this.mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+      }
       if (e.button === 0) this.mouse.down = true;
       if (e.button === 2) {
         this.mouse.rdown = true;
         this.pressed.add('dash');
       }
     });
+    const lift = (e) => {
+      if (e.pointerType === 'touch') {
+        this.touches.delete(e.pointerId);
+        if (this.touches.size > 0) return;
+      }
+      if (e.button === 0 || e.pointerType === 'touch') this.mouse.down = false;
+    };
+    addEventListener('pointercancel', lift);
     addEventListener('pointerup', (e) => {
-      if (e.button === 0) this.mouse.down = false;
+      lift(e);
       if (e.button === 2) this.mouse.rdown = false;
     });
     el.addEventListener('contextmenu', (e) => e.preventDefault());

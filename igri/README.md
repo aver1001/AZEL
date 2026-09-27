@@ -14,12 +14,20 @@ python3 -m http.server 8000
 
 GitHub Pages에 올리면 `…/igri/` 경로에서 바로 플레이할 수 있습니다. three.js는 jsDelivr CDN(0.170.0)에서 불러옵니다.
 
+더블클릭으로 여는 단일 HTML이 필요하면(itch.io 업로드, Electron/Tauri 래핑 등) three.js까지 한 파일로 묶을 수 있습니다.
+
+```bash
+cd igri
+npm i --no-save esbuild three@0.170.0
+node tools/build-single.mjs   # dist/igri.html 생성
+```
+
 ## 조작
 
 | 동작 | 키 |
 |---|---|
-| 이동 | WASD · 방향키 · 마우스 왼쪽 버튼(커서 방향) · 게임패드 왼쪽 스틱 |
-| 고열 방출(대쉬) | SPACE · SHIFT · 마우스 오른쪽 · 패드 A/RB |
+| 이동 | WASD · 방향키 · 마우스 왼쪽 버튼(커서 방향) · 게임패드 왼쪽 스틱 · 터치: 누른 채로 끌기 |
+| 고열 방출(대쉬) | SPACE · SHIFT · 마우스 오른쪽 · 패드 A/RB · 터치: 두 번째 손가락 탭 |
 | 스킬 선택 | 1 · 2 · 3 또는 클릭 |
 | 일시정지 / 소리 | ESC · P / M |
 
@@ -51,6 +59,7 @@ igri/
   css/style.css
   models.html         모든 절차적 모델 카탈로그(vibe3d식 미리보기)
   dev.html            월드 뷰어 (?x=&z=&r=&burn= 로 원하는 지점을 렌더)
+  tools/build-single.mjs  단일 HTML 번들 빌드
   js/
     config.js         밸런스 수치 전부(티어, 가연물, 피해량, 수배 단계, 스킬)
     main.js           부팅, 상태 머신(타이틀→인트로→플레이→스킬 선택→엔딩), 프레임 루프
