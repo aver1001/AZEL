@@ -2,7 +2,7 @@
 // dash ring, status chips, minimap, toasts, floating popups, tier banners,
 // and the 3-card skill picker.
 import * as THREE from 'three';
-import { TIERS, SKILLS, WORLD, MASS, WANTED } from './config.js';
+import { TIERS, SKILLS, WORLD, MASS, WANTED, COMBO, FEVER } from './config.js';
 import { GW, GH } from './world/burnmap.js';
 
 export const ICONS = {
@@ -52,7 +52,22 @@ export class HUD {
       minimap: $('minimap'),
       choose: $('choose'),
       cards: $('cards'),
+      feverFill: $('fever-fill'),
+      feverLabel: $('fever-label'),
+      combo: $('combo'),
+      comboNum: $('combo-num'),
+      comboFill: $('combo-fill'),
+      comboBonus: $('combo-bonus'),
+      missions: $('missions'),
+      challenge: $('challenge'),
+      chText: $('ch-text'),
+      chFill: $('ch-fill'),
+      chProgress: $('ch-progress'),
+      chTime: $('ch-time'),
     };
+    this.lastCombo = 0;
+    this.lastMissions = '';
+    this.recentDone = [];
     this.mm = this.el.minimap.getContext('2d');
     // minimap base from the painted ground
     this.mmBase = document.createElement('canvas');
@@ -107,6 +122,10 @@ export class HUD {
     }
   }
 
+  missionDone(m) {
+    this.recentDone.push({ m, until: performance.now() + 1400 });
+  }
+
   update(dt) {
     const g = this.g;
     const P = g.player;
@@ -150,8 +169,62 @@ export class HUD {
     e.dashRing.style.strokeDashoffset = String(cd * 113);
     e.dashRing.parentElement.parentElement.classList.toggle('ready', cd <= 0);
 
+    // combo and fever
+    if (P.combo > 1) {
+      e.combo.hidden = false;
+      if (P.combo !== this.lastCombo) {
+        e.comboNum.textContent = P.combo;
+        e.comboNum.classList.remove('pop');
+        void e.comboNum.offsetWidth;
+        e.comboNum.classList.add('pop');
+        const bonus = Math.round(Math.min(COMBO.fuelCap, P.combo * COMBO.fuelPerStep) * 100);
+        e.comboBonus.textContent = `연료 +${bonus}%`;
+      }
+      e.comboFill.style.transform = `scaleX(${Math.max(0, P.comboT / COMBO.window).toFixed(3)})`;
+      e.combo.classList.toggle('hot', P.combo >= 25);
+    } else e.combo.hidden = true;
+    this.lastCombo = P.combo;
+    const feverOn = P.feverT > 0;
+    e.root.classList.toggle('fever', feverOn);
+    e.feverFill.style.transform = `scaleX(${(feverOn ? P.feverT / FEVER.duration : P.fever).toFixed(3)})`;
+    e.feverLabel.textContent = feverOn ? `화염 폭주 ${P.feverT.toFixed(1)}s` : '화염 폭주';
+
+    // missions and the timed challenge
+    const M = g.missions;
+    if (M) {
+      const act = M.active();
+      const now = performance.now();
+      this.recentDone = this.recentDone.filter((d) => d.until > now);
+      const key = this.recentDone.map((d) => d.m.id).join(',') + '#' + act.map((m) => m.id + M.count(m)).join('|');
+      if (key !== this.lastMissions) {
+        this.lastMissions = key;
+        const rw = { pick: '보상: 새로운 힘', fuel: '보상: 연료 +20%', time: '보상: 제한 시간 +60초' };
+        const done = this.recentDone.map((d) => `<li class="done"><span class="m-text">${d.m.text}</span><span class="m-count">완료</span></li>`).join('');
+        e.missions.innerHTML =
+          done +
+          act
+            .map((m) => `<li><span class="m-text">${m.text}</span><span class="m-count">${M.count(m)}/${m.goal}</span>${m.reward ? `<span class="m-reward">${rw[m.reward]}</span>` : ''}</li>`)
+            .join('');
+      }
+      const ch = M.challenge;
+      if (ch) {
+        e.challenge.hidden = false;
+        e.chText.textContent = ch.text;
+        e.chFill.style.transform = `scaleX(${Math.min(1, ch.progress / ch.n).toFixed(3)})`;
+        e.chProgress.textContent = `${Math.min(ch.n, ch.progress)} / ${ch.n}`;
+        e.chTime.textContent = `${Math.max(0, ch.t).toFixed(1)}s`;
+        e.challenge.classList.toggle('urgent', ch.t < 5);
+      } else e.challenge.hidden = true;
+    }
+
     // status chips
     const chips = [];
+    const W = g.weather.wind;
+    if (W.s > 0.05) {
+      const deg = (Math.atan2(W.x, -W.z) * 180) / Math.PI;
+      chips.push(`<span class="chip wind"><i style="transform:rotate(${deg.toFixed(0)}deg)">↑</i>강풍 · ${W.name}</span>`);
+    }
+    if (P.invuln > 0) chips.push('<span class="chip hot">무적</span>');
     if (P.inRain) chips.push('<span class="chip water">빗속! 크기 감소</span>');
     if (g.weather.updraft) chips.push('<span class="chip hot">상승 기류</span>');
     if (P.steam > 0.4) chips.push('<span class="chip steam">수증기 은폐</span>');
@@ -275,7 +348,7 @@ export class HUD {
   choose(options, source) {
     const e = this.el;
     const P = this.g.player;
-    e.choose.querySelector('.choose-sub').textContent = `${source} 폭발! 진화할 힘을 하나 고르세요`;
+    e.choose.querySelector('.choose-sub').textContent = source.includes('!') ? source : `${source} 폭발! 진화할 힘을 하나 고르세요`;
     e.cards.innerHTML = options
       .map((k, i) => {
         const lv = P.skills[k];

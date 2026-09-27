@@ -94,8 +94,9 @@ export class Audio {
   update(state) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const { r = 0.3, burning = 0, rain = 0, heli = 0, tier = 1, silent = false } = state;
+    const { r = 0.3, burning = 0, rain = 0, heli = 0, tier = 1, silent = false, fever = false } = state;
     this.tier = tier;
+    this.fever = fever;
     const fire = silent ? 0 : Math.min(0.55, 0.08 + Math.log2(1 + r) * 0.12 + Math.min(0.2, burning * 0.0006));
     this.fireGain.gain.setTargetAtTime(fire, t, 0.2);
     this.fireFilter.frequency.setTargetAtTime(300 + Math.min(1500, r * 60 + burning * 1.5), t, 0.3);
@@ -234,6 +235,45 @@ export class Audio {
         if (!this.limit('bump', 250)) return;
         this.tone({ type: 'sine', f0: 140, f1: 70, a: 0.003, d: 0.12, peak: 0.2 });
         break;
+      case 'eat': {
+        // bright pop that climbs with the combo
+        if (!this.limit('eat', 38)) return;
+        const f = 320 * Math.pow(2, Math.min(24, k) / 12);
+        this.tone({ type: 'triangle', f0: f, f1: f * 1.5, a: 0.002, d: 0.07, peak: 0.07 });
+        this.noiseShot({ type: 'bandpass', f0: 2500, f1: 5000, q: 2, a: 0.001, d: 0.04, peak: 0.05 });
+        break;
+      }
+      case 'fever': {
+        [220, 330, 440, 660, 880].forEach((f, i) => this.tone({ type: 'sawtooth', f0: f, f1: f * 1.02, a: 0.01, d: 0.6, peak: 0.07, when: i * 0.05 }));
+        this.noiseShot({ type: 'bandpass', f0: 150, f1: 3000, q: 0.7, a: 0.15, d: 0.9, peak: 0.5, brown: true });
+        this.tone({ type: 'sine', f0: 60, f1: 40, a: 0.01, d: 0.8, peak: 0.6 });
+        break;
+      }
+      case 'mission':
+        [523, 659, 784, 1047].forEach((f, i) => this.tone({ type: 'triangle', f0: f, a: 0.005, d: 0.35, peak: 0.1, when: i * 0.08 }));
+        break;
+      case 'challenge':
+        [880, 1175].forEach((f, i) => this.tone({ type: 'square', f0: f, a: 0.005, d: 0.12, peak: 0.04, when: i * 0.12 }));
+        break;
+      case 'fail':
+        [392, 330].forEach((f, i) => this.tone({ type: 'triangle', f0: f, a: 0.005, d: 0.2, peak: 0.07, when: i * 0.12 }));
+        break;
+      case 'cashin': {
+        const n = Math.min(6, 2 + Math.floor(k / 15));
+        for (let i = 0; i < n; i++) this.tone({ type: 'triangle', f0: 660 + i * 110, a: 0.003, d: 0.12, peak: 0.07, when: i * 0.045 });
+        break;
+      }
+      case 'nova':
+        this.noiseShot({ type: 'lowpass', f0: 5000, f1: 60, a: 0.01, d: 1.8, peak: 0.9, brown: true });
+        this.tone({ type: 'sine', f0: 90, f1: 25, a: 0.01, d: 1.4, peak: 0.8 });
+        this.tone({ type: 'sawtooth', f0: 110, f1: 440, a: 0.3, d: 0.8, peak: 0.08 });
+        break;
+      case 'gale':
+        this.noiseShot({ type: 'bandpass', f0: 250, f1: 900, q: 0.6, a: 0.6, d: 2.2, peak: 0.35 });
+        break;
+      case 'lastEmber':
+        [196, 247, 294, 392].forEach((f, i) => this.tone({ type: 'sine', f0: f, a: 0.02, d: 0.9, peak: 0.12, when: i * 0.12 }));
+        break;
       case 'warning':
         this.tone({ type: 'square', f0: 440, a: 0.01, d: 0.12, peak: 0.05 });
         this.tone({ type: 'square', f0: 440, a: 0.01, d: 0.12, peak: 0.05, when: 0.2 });
@@ -272,13 +312,14 @@ export class Audio {
   schedule() {
     const ctx = this.ctx;
     if (!ctx) return;
-    const bpm = [0, 84, 96, 112, 128][this.tier] || 96;
+    const T0 = this.fever ? Math.min(4, this.tier + 2) : this.tier;
+    const bpm = ([0, 84, 96, 112, 128][this.tier] || 96) * (this.fever ? 1.15 : 1);
     const spb = 60 / bpm / 2; // eighth notes
     this.droneFilter.frequency.setTargetAtTime(140 + this.tier * 110, ctx.currentTime, 2);
     while (this.nextBeat < ctx.currentTime + 0.25) {
       const s = this.step % 16;
       const when = this.nextBeat - ctx.currentTime;
-      const T = this.tier;
+      const T = T0;
       const kick = T >= 2 && (s === 0 || s === 8 || (T >= 3 && (s === 6 || s === 11)) || (T >= 4 && s % 4 === 0));
       const tom = T >= 1 && (s === 4 || s === 12 || (T >= 3 && s === 14));
       const hat = T >= 3 && s % 2 === 1;

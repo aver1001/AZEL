@@ -326,8 +326,8 @@ export function generateLayout(seed = 1337) {
   // ---------------------------------------------------------------- start area
   const S = WORLD.start;
   add('butt', S.x, S.z, 0.4, 1, { hero: true });
-  for (let i = 0; i < 2800; i++) {
-    const r = 0.8 + rnd() * 56;
+  for (let i = 0; i < 3400; i++) {
+    const r = 0.8 + Math.sqrt(rnd()) * 56;
     const a = rnd() * Math.PI * 2;
     const x = S.x + Math.cos(a) * r, z = S.z + Math.sin(a) * r;
     if (Math.hypot(x - S.x, z - S.z) < 0.6) continue;

@@ -31,6 +31,7 @@
       <p class="eyebrow">탑다운 액션 로그라이크 · .io</p>
       <h1><span class="logo">IGRI</span><span class="logo-ko">이그리</span></h1>
       <p class="tagline">버려진 담배꽁초에서 태어난 불의 정령.<br />숲을 시작으로 도시까지, 모든 것을 집어삼키는 재앙이 되어라.</p>
+      <p id="best" class="best" hidden></p>
       <div class="title-actions">
         <button id="btn-start" class="btn primary">불씨 피우기</button>
         <button id="btn-help" class="btn">조작법</button>
@@ -49,6 +50,7 @@
           <li><b>들불</b> 아름드리나무 · 오두막 — 소방차 · 국지성 호우 주의</li>
           <li><b>재앙</b> 숲 전체 · 빌딩 · 랜드마크 — 소방 헬기 · 물의 정령</li>
         </ol>
+        <p class="help-note">쉬지 않고 연달아 태우면 <b>연소 콤보</b>가 쌓여 연료가 늘고, 게이지가 차면 <b>화염 폭주</b>로 한 단계 큰 것까지 삼킵니다. 화면 오른쪽의 <b>의뢰</b>와 수시로 뜨는 <b>긴급 과제</b>를 해결하면 보상을 받습니다.</p>
         <p class="help-note">자신보다 작은 것은 태워 몸집을 키우고, 큰 것과 물에 닿으면 작아집니다. 가만히 있어도 연료가 줄어드니 계속 움직이세요. 가스통 · 폐기물 · 송전탑 같은 폭발물을 태우면 새로운 힘을 고를 수 있습니다.</p>
       </div>
     </div>
@@ -66,10 +68,27 @@
       </div>
       <div class="size-bar"><div id="size-fill"></div></div>
       <div id="size-text" class="size-text"></div>
+      <div class="fever-row">
+        <div class="fever-bar"><div id="fever-fill"></div></div>
+        <span id="fever-label">화염 폭주</span>
+      </div>
+    </div>
+    <div class="hud-mr">
+      <div id="combo" class="combo" hidden>
+        <div id="combo-num" class="combo-num">0</div>
+        <div class="combo-label">연소 콤보</div>
+        <div class="combo-bar"><div id="combo-fill"></div></div>
+        <div id="combo-bonus" class="combo-bonus"></div>
+      </div>
     </div>
     <div class="hud-tc">
       <div id="timer">16:00</div>
       <div id="stars" aria-label="지명 수배"></div>
+      <div id="challenge" hidden>
+        <div class="ch-head"><span class="ch-tag">긴급 과제</span><span id="ch-text"></span></div>
+        <div class="ch-track"><div id="ch-fill"></div></div>
+        <div class="ch-meta"><span id="ch-progress"></span><span id="ch-time"></span></div>
+      </div>
       <div id="objective" hidden><span class="obj-arrow" aria-hidden="true">▲</span><span id="obj-text"></span></div>
       <div id="bossbar" hidden>
         <div class="boss-name">물의 정령</div>
@@ -81,6 +100,7 @@
       <div class="dmg-label">총 재산 피해액</div>
       <div id="damage">0원</div>
       <div id="trees"></div>
+      <ol id="missions" aria-label="의뢰"></ol>
     </div>
     <div class="hud-bl"><div id="skills"></div></div>
     <div class="hud-bc">

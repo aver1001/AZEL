@@ -209,6 +209,7 @@ code { font-family: var(--mono); background: #0006; padding: 1px 6px; border-rad
 .popup { position: absolute; left: 0; top: 0; font-weight: 900; font-size: 16px; color: #fff; text-shadow: 0 0 6px #000, 0 2px 4px #000; white-space: nowrap; }
 .popup.gain { color: #ffd48a; font-size: 14px; }
 .popup.warn { color: #bfe3ff; }
+.popup.combo { font-family: var(--display); font-size: 26px; color: #fff4e0; text-shadow: 0 0 16px #ff6a1a, 0 2px 6px #000; }
 .popup.parry { font-family: var(--display); font-size: 34px; color: #fff; text-shadow: 0 0 18px #62b8ff, 0 0 4px #000; }
 
 #banner { left: 50%; top: 30%; transform: translateX(-50%); text-align: center; opacity: 0; width: min(640px, calc(100% - 32px)); }
@@ -216,6 +217,66 @@ code { font-family: var(--mono); background: #0006; padding: 1px 6px; border-rad
 .banner-title { font-family: var(--display); font-size: clamp(36px, 6vw, 64px); color: #fff4e0; text-shadow: 0 0 30px #ff6a1a, 0 4px 18px #000; }
 .banner-sub { margin-top: 6px; font-size: 15px; color: #efe6da; text-shadow: 0 1px 8px #000; text-wrap: balance; }
 @keyframes banner { 0% { opacity: 0; transform: translate(-50%, 12px) scale(0.96); } 10%, 75% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; } }
+
+/* fever gauge */
+.fever-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.fever-bar { flex: 1; height: 6px; border-radius: 3px; background: #0009; border: 1px solid #ffffff1f; overflow: hidden; }
+#fever-fill { height: 100%; transform-origin: left; transform: scaleX(0); background: linear-gradient(90deg, #ff9a3a, #fff1c8); transition: transform 0.15s linear; }
+#fever-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #d9d0c4; text-shadow: 0 1px 4px #000; }
+#hud.fever #fever-fill { background: linear-gradient(90deg, #fff1c8, #ffffff); box-shadow: 0 0 12px #fff; }
+#hud.fever #fever-label { color: #fff4e0; }
+#hud.fever::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 120px 30px #ff7a1a88, inset 0 0 30px 6px #ffd48a66;
+  animation: feverPulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes feverPulse { to { box-shadow: inset 0 0 160px 40px #ff9a2aaa, inset 0 0 40px 10px #fff0c888; } }
+
+/* combo */
+.hud-mr { right: calc(var(--gutter) + 8px); top: 38%; }
+.combo { text-align: right; min-width: 120px; }
+.combo-num {
+  font-family: var(--display); font-size: 64px; line-height: 0.95; color: #fff4e0;
+  text-shadow: 0 0 22px #ff6a1a, 0 3px 10px #000; transform-origin: right center;
+}
+.combo-num.pop { animation: comboPop 0.18s ease-out; }
+@keyframes comboPop { 40% { transform: scale(1.18); } }
+.combo-label { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ffcf9a; text-shadow: 0 1px 4px #000; }
+.combo-bar { height: 4px; margin-top: 6px; border-radius: 2px; background: #0008; overflow: hidden; }
+#combo-fill { height: 100%; transform-origin: right; background: var(--flame); }
+.combo-bonus { margin-top: 4px; font-size: 12px; color: #ffd48a; text-shadow: 0 1px 4px #000; }
+.combo.hot .combo-num { color: #fff; text-shadow: 0 0 30px #ffb347, 0 0 60px #ff6a1a, 0 3px 10px #000; }
+
+/* missions */
+#missions { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; justify-items: end; }
+#missions li {
+  display: grid; grid-template-columns: auto auto; gap: 2px 10px; align-items: baseline;
+  background: #0e0b0acc; border: 1px solid #ffffff1c; border-right: 3px solid var(--flame);
+  padding: 6px 10px; border-radius: 4px; font-size: 13px; max-width: min(300px, 40vw);
+}
+#missions li .m-text { color: var(--smoke); text-align: right; }
+#missions li .m-count { color: var(--flame); font-weight: 700; font-family: var(--mono); }
+#missions li .m-reward { grid-column: 1 / -1; font-size: 11px; color: #a99f94; text-align: right; }
+#missions li.done { border-right-color: #7de08a; animation: missionDone 1.2s ease-out forwards; }
+@keyframes missionDone { 0% { background: #7de08a44; } 100% { background: #0e0b0acc; opacity: 0.2; } }
+
+/* challenge */
+#challenge {
+  width: min(360px, 100%); margin-top: 6px; padding: 8px 12px; border-radius: 6px;
+  background: #1a0d06e6; border: 1px solid #ff8a3a88; box-shadow: 0 0 24px #ff6a1a44;
+  animation: toastIn 0.3s ease-out;
+}
+.ch-head { display: flex; gap: 8px; align-items: baseline; font-size: 14px; font-weight: 700; }
+.ch-tag { font-size: 11px; letter-spacing: 0.1em; color: #1a0a02; background: var(--flame); padding: 1px 6px; border-radius: 3px; }
+.ch-track { height: 5px; margin-top: 6px; border-radius: 3px; background: #0009; overflow: hidden; }
+#ch-fill { height: 100%; transform-origin: left; background: linear-gradient(90deg, #ff6a1a, #ffd48a); }
+.ch-meta { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; color: #d9d0c4; font-family: var(--mono); }
+#challenge.urgent .ch-meta #ch-time { color: #ff8a6a; }
+
+.chip.wind { color: #e6f2ff; border-color: #bcd8ff99; }
+.chip.wind i { display: inline-block; font-style: normal; margin-right: 4px; }
+
+.best { margin: -12px 0 22px; font-size: 13px; color: #cfc5b8; font-family: var(--mono); }
 
 /* ------------------------------------------------------------ overlays */
 .overlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: radial-gradient(ellipse at center, #2a0f04cc 0%, #080504ee 70%); padding-inline: var(--gutter); }
@@ -284,6 +345,8 @@ code { font-family: var(--mono); background: #0006; padding: 1px 6px; border-rad
 #ending-actions { position: absolute; bottom: calc(10vh + env(safe-area-inset-bottom, 0px)); }
 
 @media (max-width: 720px) {
+  .combo-num { font-size: 42px; }
+  #missions li { font-size: 11px; }
   .hud-tr #damage { font-size: 24px; }
   .tier-name { font-size: 22px; }
   #minimap { width: 90px; height: 158px; }

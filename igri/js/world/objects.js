@@ -8,6 +8,7 @@ import { BUILDERS, CAR_COLORS } from '../models/catalog.js';
 const CHAR = new THREE.Color(0.07, 0.062, 0.058);
 const HOT = new THREE.Color(0.62, 0.24, 0.1);
 const RETARD = new THREE.Color(1.0, 0.42, 0.38);
+const GLOW = new THREE.Color(1.0, 0.72, 0.38);
 const BLDG_TINTS = [0xc9ccd1, 0xd9d2c4, 0xa9b8c8, 0xe4e0d8, 0x9aa3ad, 0xbfc9c0];
 
 // Shared "x-ray" cutout: anything between the camera and Igri is dithered away
@@ -145,6 +146,9 @@ export class ObjectField {
     this.group = new Uint16Array(N);
     this.inst = new Uint32Array(N);
     this.source = new Uint8Array(N);
+    this.pulled = new Uint8Array(N); // being swallowed into the player
+    this.pullTarget = new THREE.Vector3();
+    this.pullLift = 0.3;
 
     // group placements by model
     const groups = new Map();
@@ -317,10 +321,61 @@ export class ObjectField {
     return true;
   }
 
+  /** Swallow a small object: it streaks into Igri, flares and is gone. */
+  devour(id) {
+    if (this.state[id] !== 0) return false;
+    if (this.isExplosive(id)) return this.ignite(id, 0);
+    this.state[id] = 1;
+    this.t[id] = 0;
+    this.source[id] = 0;
+    this.pulled[id] = 1;
+    this.dur[id] = 0.22 + Math.random() * 0.08;
+    this.burning.push(id);
+    this.onEvent('ignite', id, 0);
+    return true;
+  }
+
+  applyPullVisual(id, t) {
+    const g = this.groups[this.group[id]];
+    const k = this.inst[id];
+    const e = t * t;
+    const s = 1 - e * 0.92;
+    const tx = this.pullTarget.x, tz = this.pullTarget.z;
+    const lift = Math.sin(t * Math.PI) * this.pullLift;
+    for (const part of g.parts) {
+      const m = tmpM.elements;
+      for (let q = 0; q < 16; q++) m[q] = part.baseM[k * 16 + q];
+      for (const c of [0, 1, 2, 4, 5, 6, 8, 9, 10]) m[c] *= s;
+      m[12] += (tx - m[12]) * e;
+      m[13] += lift;
+      m[14] += (tz - m[14]) * e;
+      part.mesh.setMatrixAt(k, tmpM);
+    }
+    g.dirtyM = true;
+    this.setColor(id, (part, kk, base) => tmpC.fromArray(base, kk * 3).lerp(GLOW, Math.min(1, t * 2)));
+    g.heat[k] = 1.3;
+    g.dirtyH = true;
+    this.markRange(g, k);
+  }
+
+  finishPulled(id) {
+    this.state[id] = 2;
+    this.pulled[id] = 0;
+    const g = this.groups[this.group[id]];
+    const k = this.inst[id];
+    this.setScale(id, 0, 0, () => 'vanish');
+    this.setColor(id, (part, kk, base) => tmpC.fromArray(base, kk * 3).copy(CHAR));
+    g.heat[k] = 0;
+    g.dirtyH = true;
+    this.burnMap.add(this.x[id], this.z[id], Math.max(0.5, this.size[id] * 1.5), 0.7, 0.3);
+    this.onEvent('burnt', id, 0, false);
+  }
+
   extinguish(x, z, r) {
     let n = 0;
     for (let k = this.burning.length - 1; k >= 0; k--) {
       const id = this.burning[k];
+      if (this.pulled[id]) continue;
       if (Math.hypot(this.x[id] - x, this.z[id] - z) < r + this.size[id]) {
         this.finish(id, true);
         this.burning.splice(k, 1);
@@ -435,6 +490,20 @@ export class ObjectField {
     for (let n = this.burning.length - 1; n >= 0; n--) {
       const id = this.burning[n];
       const x = this.x[id], z = this.z[id];
+      if (this.pulled[id]) {
+        this.t[id] += dt / this.dur[id];
+        if (this.t[id] >= 1) {
+          this.burning.splice(n, 1);
+          this.finishPulled(id);
+        } else {
+          this.applyPullVisual(id, this.t[id]);
+          if (this.emitBudget > 1 && Math.random() < 0.35) {
+            fx.ember(x + (this.pullTarget.x - x) * this.t[id], 0.1, z + (this.pullTarget.z - z) * this.t[id], Math.max(0.1, this.size[id]), 1);
+            this.emitBudget -= 0.5;
+          }
+        }
+        continue;
+      }
       if (ctx.rainAt && ctx.rainAt(x, z) && Math.random() < dt * 1.5) {
         this.burning.splice(n, 1);
         this.finish(id, true);
@@ -506,14 +575,24 @@ export class ObjectField {
       const chance = (SPREAD.chance[ctx.tier] || 0) * step * (ctx.spreadMul || 1);
       if (chance > 0 && this.spreadEnabled) {
         const snapshot = this.burning.slice();
+        const w = ctx.wind;
+        const ws = w ? w.s : 0;
         for (const id of snapshot) {
-          if (this.isExplosive(id)) continue;
-          const range = SPREAD.range(Math.min(this.size[id], 6));
+          if (this.isExplosive(id) || this.pulled[id]) continue;
+          const base = SPREAD.range(Math.min(this.size[id], 6));
+          const range = base * (1 + ws * 0.8);
           const power = Math.max(1.0, this.need[id] * 1.15);
           const x0 = this.x[id], z0 = this.z[id];
-          this.query(x0, z0, range, (nid) => {
+          this.query(x0, z0, range, (nid, d) => {
             if (this.state[nid] !== 0 || this.need[nid] > power) return;
-            if (Math.random() < chance) {
+            let c = chance;
+            if (ws > 0) {
+              // gales carry the fire downwind
+              const dot = ((this.x[nid] - x0) * w.x + (this.z[nid] - z0) * w.z) / (d || 1);
+              if (d > base * (1 + ws * 0.8 * Math.max(0, dot))) return;
+              c *= Math.max(0.1, 1 + 2 * ws * dot);
+            } else if (d > base + this.size[nid]) return;
+            if (Math.random() < c) {
               if (ctx.rainAt && ctx.rainAt(this.x[nid], this.z[nid])) return;
               this.ignite(nid, 1);
             }

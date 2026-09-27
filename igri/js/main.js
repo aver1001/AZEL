@@ -1,6 +1,6 @@
 // Igri — boot, game state machine and the per-frame orchestration.
 import * as THREE from 'three';
-import { WORLD, ZONES, RUN, SKILLS, WANTED, TIERS, OBJECTS } from './config.js';
+import { WORLD, ZONES, RUN, SKILLS, WANTED, TIERS, OBJECTS, COMBO, WIND } from './config.js';
 import { createRenderer } from './render.js';
 import { generateLayout } from './world/layout.js';
 import { BurnMap } from './world/burnmap.js';
@@ -13,10 +13,11 @@ import { Player } from './player.js';
 import { Enemies } from './enemies.js';
 import { Weather } from './weather.js';
 import { Boss } from './boss.js';
-import { HUD } from './hud.js';
+import { HUD, formatWon } from './hud.js';
 import { Audio } from './audio.js';
 import { Input } from './input.js';
 import { playEnding } from './ending.js';
+import { Missions } from './missions.js';
 import { part, merge, cyl, sphere } from './models/geo.js';
 
 const $ = (id) => document.getElementById(id);
@@ -64,6 +65,7 @@ async function boot() {
     elapsed: 0,
     timeLeft: RUN.timeLimit,
     hitstop: 0,
+    slowmo: 0,
     flash: 0,
     silent: false,
     grayTarget: 0,
@@ -76,6 +78,24 @@ async function boot() {
       const fn = handlers[type];
       if (fn) fn(...args);
     },
+    /** Tier-up shockwave: everything the new size can burn nearby goes up at once. */
+    nova() {
+      const P = g.player;
+      const R = P.r * 3.4 + 2;
+      explosions.spawn(P.pos.x, P.pos.z, R);
+      // pure spectacle: it lights the neighbourhood but pays no fuel
+      field.query(P.pos.x, P.pos.z, R, (id, d) => {
+        if (d < R && field.state[id] === 0 && field.need[id] <= P.r) field.ignite(id, 3);
+      });
+      g.enemies.damageAt(P.pos.x, P.pos.z, R, 6);
+      g.slowmo = 0.9;
+      g.hitstop = 0.1;
+      g.flash = 0.35;
+      g.rig.shake = Math.max(g.rig.shake, 1.1);
+      P.invuln = Math.max(P.invuln, 2.5);
+      P.fever = Math.min(0.99, P.fever + 0.3);
+      audio.play('nova');
+    },
     zoneAt(z) {
       for (const zn of ZONES) if (z >= zn.z0 && z <= zn.z1) return zn.key;
       return 'forest';
@@ -86,7 +106,8 @@ async function boot() {
       field.query(x, z, radius, (id, d) => {
         if (d > radius + field.size[id] * 0.5) return;
         if (field.state[id] === 0 && field.need[id] <= power) {
-          if (field.ignite(id, source === 'skill' ? 2 : 3) && source === 'skill') P.gain(field.fuel[id], 'skill');
+          if (source === 'skill') P.skillEat(id);
+          else field.ignite(id, 3);
         }
       });
       g.enemies.damageAt(x, z, radius, dmg);
@@ -120,6 +141,8 @@ async function boot() {
   g.boss = new Boss(g);
   const hud = new HUD(g);
   g.hud = hud;
+  const missions = new Missions(g);
+  g.missions = missions;
 
   // the cigarette butt that starts it all
   const hero = new THREE.Group();
@@ -149,6 +172,7 @@ async function boot() {
       if (up) {
         hud.banner(`TIER ${t.id} · ${t.name}`, t.blurb);
         audio.play('tierUp');
+        if (g.state === 'play') g.nova();
         g.stats.maxTier = Math.max(g.stats.maxTier, t.id);
         if (t.id === 4 && !g.bossScheduled) {
           g.bossScheduled = true;
@@ -198,9 +222,84 @@ async function boot() {
     truckExplode(a, rear) {
       if (rear) {
         hud.toast('엔진룸 직격! 소방차 폭발');
+        missions.bump('truckRear');
         queuePick('소방차');
       }
     },
+    ffDown(a) {
+      missions.bump('ffDown');
+      player.combo++;
+      player.comboT = COMBO.window;
+      player.gain(player.mass * 0.02 + 1, 'direct');
+    },
+    heliDown() {
+      missions.bump('heliDown');
+      hud.toast('소방 헬기 격추!');
+      queuePick('소방 헬기');
+    },
+    consume(id, combo) {
+      missions.bump('consume');
+      missions.combo(combo);
+      const d = OBJECTS[field.typeKey[id]];
+      if (d.litter) missions.bump('litter');
+      audio.play('eat', combo);
+      const ms = COMBO.milestones[combo];
+      if (ms) {
+        hud.popup(`${combo} 콤보 · ${ms}`, new THREE.Vector3(player.pos.x, player.r * 3 + 0.5, player.pos.z), 'combo');
+        audio.play('cashin', combo);
+      }
+    },
+    comboEnd(n) {
+      if (n < 8) return;
+      const bonus = player.mass * Math.min(COMBO.cashInCap, n * COMBO.cashIn);
+      player.gain(bonus, 'direct');
+      hud.popup(`콤보 ${n} · 연료 +${bonus < 10 ? bonus.toFixed(1) : Math.round(bonus).toLocaleString('ko-KR')}`, new THREE.Vector3(player.pos.x, player.r * 2.5 + 0.4, player.pos.z), 'gain');
+      audio.play('cashin', n);
+    },
+    fever() {
+      hud.banner('화염 폭주!', '7초 동안 더 빠르게, 조금 더 큰 것까지 저절로 빨아들입니다');
+      audio.play('fever');
+      g.flash = 0.25;
+      g.rig.shake = Math.max(g.rig.shake, 0.6);
+    },
+    feverEnd() {},
+    lastEmber() {
+      hud.banner('마지막 불씨', '단 한 번, 꺼지지 않았습니다. 다음은 없습니다.');
+      audio.play('lastEmber');
+      g.slowmo = 1.2;
+    },
+    missionDone(m) {
+      hud.missionDone(m);
+      audio.play('mission');
+      if (m.reward === 'pick') queuePick('의뢰 완료! 보상으로 힘을 하나 고르세요');
+      else if (m.reward === 'fuel') {
+        player.setMass(player.mass * 1.2 + 2);
+        hud.toast(`의뢰 완료 · ${m.text} — 연료 +20%`);
+      } else if (m.reward === 'time') {
+        g.timeLeft += 60;
+        hud.toast(`의뢰 완료 · ${m.text} — 제한 시간 +60초`);
+      }
+    },
+    challenge(ch) {
+      audio.play('challenge');
+      hud.toast(`긴급 과제 — ${ch.text}`, 'alert');
+    },
+    challengeDone(ch) {
+      audio.play('mission');
+      player.setMass(player.mass * 1.12 + 1);
+      player.fever = Math.min(1, player.fever + 0.5);
+      if (player.fever >= 1 && player.feverT <= 0) player.startFever();
+      hud.toast(`과제 성공! 연료 +12% · 폭주 게이지 +50%`);
+    },
+    challengeFail() {
+      audio.play('fail');
+      hud.toast('긴급 과제 실패');
+    },
+    gale(w) {
+      audio.play('gale');
+      hud.toast(`강풍 특보! ${w.name} — 바람 방향으로 불길이 번지고, 바람을 타면 빨라집니다`, 'alert');
+    },
+    galeEnd() {},
     bossAwake() {
       audio.play('bossRoar');
       hud.banner('물의 정령', '물대포가 발사되는 순간 대쉬(SPACE)로 증발 패링!');
@@ -212,6 +311,7 @@ async function boot() {
       hud.popup('증발 패링!', new THREE.Vector3(player.pos.x, player.r * 3 + 2, player.pos.z), 'parry');
     },
     bossDefeated() {
+      missions.bump('boss');
       hud.toast('물의 정령이 증발했습니다');
       setTimeout(() => endRun('재앙이 도시를 삼켰습니다'), 2500);
     },
@@ -250,11 +350,24 @@ async function boot() {
       if (d.landmark && !doused) s.landmarks.push(d.label);
       s.habitat += d.habitat || 0;
       s.residents += d.residents || 0;
+      if (!doused) {
+        if (d.tree) missions.bump('trees');
+        if (key === 'tent') missions.bump('tent');
+        if (key === 'cabin' || key === 'barn') missions.bump('cabin');
+        if (key === 'house') missions.bump('house');
+        if (d.landmark) missions.bump('landmark');
+      }
+      // a wildfire you lit keeps feeding you while you stay close to it
+      if (source === 1 && !doused && player.alive) {
+        const pd = Math.hypot(field.x[id] - player.pos.x, field.z[id] - player.pos.z);
+        if (pd < player.r * 6 + 15) player.gain(field.fuel[id] * 0.6, 'spread');
+      }
     },
     'field:explode'(id) {
       const d = OBJECTS[field.typeKey[id]];
       const x = field.x[id], z = field.z[id];
       g.stats.explosions++;
+      missions.bump(field.typeKey[id]);
       g.blast(x, z, d.explosive, d.explosive * 0.3 + 1, 3, 'blast');
       const pd = Math.hypot(player.pos.x - x, player.pos.z - z);
       if (pd < Math.max(70, g.rig.dist * 1.4)) queuePick(d.label);
@@ -281,7 +394,7 @@ async function boot() {
       opts.push(pool.splice(i, 1)[0]);
     }
     g.state = 'choose';
-    audio.play('explode', 0.6);
+    audio.play(label.includes('의뢰') ? 'mission' : 'explode', 0.6);
     const k = await hud.choose(opts, label);
     player.addSkill(k);
     audio.play('pick');
@@ -299,6 +412,12 @@ async function boot() {
     hud.show(false);
     $('choose').hidden = true;
     g.rig.override = { pos: new THREE.Vector3(player.pos.x, Math.max(120, g.rig.dist * 1.6), player.pos.z + Math.max(80, g.rig.dist)), look: player.pos.clone(), speed: 0.6 };
+    try {
+      const best = JSON.parse(localStorage.getItem('igri.best') || 'null');
+      if (!best || g.stats.won > best.won) localStorage.setItem('igri.best', JSON.stringify({ won: g.stats.won, tier: g.stats.maxTier, combo: missions.c.comboMax || 0 }));
+    } catch (e) {
+      /* storage may be unavailable */
+    }
     playEnding(g, reason);
   }
 
@@ -308,6 +427,16 @@ async function boot() {
   g.rig.override = { pos: START.clone().add(new THREE.Vector3(0.55, 0.38, 0.75)), look: START.clone().add(new THREE.Vector3(-0.06, 0.02, 0)), speed: 3 };
   g.camera.position.copy(g.rig.override.pos);
   g.state = 'title';
+  try {
+    const best = JSON.parse(localStorage.getItem('igri.best') || 'null');
+    if (best) {
+      const b = $('best');
+      b.textContent = `최고 기록 · 피해액 ${formatWon(best.won)} · ${TIERS[(best.tier || 1) - 1].name} · 최대 콤보 ${best.combo || 0}`;
+      b.hidden = false;
+    }
+  } catch (e) {
+    /* no record yet */
+  }
   $('loading').classList.add('done');
   $('title').hidden = false;
   setTimeout(() => $('loading').remove(), 800);
@@ -383,6 +512,7 @@ async function boot() {
   const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const mouseWorld = new THREE.Vector3();
   const bossFocus = new THREE.Vector3();
+  const windVec = new THREE.Vector3();
   let lastTime = performance.now();
   let time = 0;
   let gray = 0;
@@ -396,7 +526,7 @@ async function boot() {
     g.fps = Math.round(0.9 * (g.fps || 60) + 0.1 / real);
     lastTime = now;
     if (!g.frozen) step(dt);
-    R.composer.render();
+    if (!g.noRender) R.composer.render();
   }
 
   function step(dt) {
@@ -420,6 +550,10 @@ async function boot() {
         g.hitstop -= dt;
         simDt = dt * 0.08;
       } else simDt = dt;
+      if (g.slowmo > 0) {
+        g.slowmo -= dt;
+        simDt *= 0.35 + 0.65 * Math.max(0, 1 - g.slowmo / 0.9) ** 2;
+      }
     } else if (g.state === 'title' || g.state === 'intro' || g.state === 'ending') simDt = dt;
 
     if (g.state === 'play') {
@@ -451,6 +585,7 @@ async function boot() {
         g.enemies.update(simDt, view);
         g.weather.update(simDt, view);
         g.boss.update(simDt);
+        missions.update(simDt);
       } else if (g.state === 'ending') {
         g.boss.update(simDt * 0.2);
       }
@@ -460,6 +595,7 @@ async function boot() {
         focus: player.pos,
         viewRadius: view,
         spreadMul: g.state === 'play' ? 1 : 0.3,
+        wind: g.weather.wind,
       });
       explosions.update(simDt);
     }
@@ -498,7 +634,9 @@ async function boot() {
     }
 
     flames.update(time, g.scene.fog);
-    fx.update(dt * (g.state === 'pause' || g.state === 'choose' ? 0 : 1), g.camera, R.renderer.domElement.height, g.scene.fog, null);
+    const W = g.weather.wind;
+    windVec.set(W.x * W.s * WIND.speed, 0, W.z * W.s * WIND.speed);
+    fx.update(dt * (g.state === 'pause' || g.state === 'choose' ? 0 : 1), g.camera, R.renderer.domElement.height, g.scene.fog, windVec);
     terrain.update(time, g.camera);
     burnMap.flush(simDt);
 
@@ -527,7 +665,7 @@ async function boot() {
     if (g.state === 'play' || g.state === 'pause' || g.state === 'choose') hud.update(g.state === 'play' ? dt : 0);
     let heli = 0;
     for (const a of g.enemies.list) if (a.kind === 'heli' && !a.dead) heli = Math.max(heli, 1 - Math.min(1, Math.hypot(a.pos.x - player.pos.x, a.pos.z - player.pos.z) / 200));
-    audio.update({ r: player.r, burning: field.burning.length, rain: player.inRain ? 1 : Math.min(1, near), heli, tier: player.tier.id, silent: g.silent || g.state === 'title' });
+    audio.update({ r: player.r, burning: field.burning.length, rain: player.inRain ? 1 : Math.min(1, near), heli, tier: player.tier.id, fever: player.feverT > 0, silent: g.silent || g.state === 'title' });
   }
   tick();
 

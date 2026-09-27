@@ -3,7 +3,7 @@
 // enough fire raises an updraft that shoves clouds away, and driving through
 // rain wraps Igri in steam that spoils the firefighters' aim.
 import * as THREE from 'three';
-import { DAMAGE } from './config.js';
+import { DAMAGE, WIND } from './config.js';
 
 function rainStreaks(n = 1400) {
   const pos = new Float32Array(n * 2 * 3);
@@ -32,6 +32,10 @@ export class Weather {
     this.timers = { drop: 3, zone: 12 };
     this.updraft = false;
     this.updraftAnnounced = false;
+    // gale events: a shared wind vector that pushes fire, smoke and Igri
+    this.wind = { x: 0, z: -1, s: 0, name: '' };
+    this.galeT = 0;
+    this.galeTimer = WIND.every[0] + Math.random() * (WIND.every[1] - WIND.every[0]);
     this.streakGeo = rainStreaks();
     this.time = 0;
     this.shadowGeo = new THREE.CircleGeometry(1, 24);
@@ -118,6 +122,30 @@ export class Weather {
     const r = P.r;
     const tier = P.tier.id;
     this.time += dt;
+
+    // ---- gales (강풍 특보)
+    if (tier >= 2 && P.control) this.galeTimer -= dt;
+    if (this.galeTimer <= 0 && this.galeT <= 0) {
+      this.galeTimer = WIND.every[0] + Math.random() * (WIND.every[1] - WIND.every[0]);
+      this.galeT = WIND.duration;
+      // lean the gale roughly toward the city so it helps more often than not
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.4;
+      this.wind.x = Math.cos(a);
+      this.wind.z = Math.sin(a);
+      const bearing = (Math.atan2(-this.wind.x, this.wind.z) * 180) / Math.PI;
+      const names = ['북', '북동', '동', '남동', '남', '남서', '서', '북서'];
+      this.wind.name = `${names[((Math.round(bearing / 45) % 8) + 8) % 8]}풍`;
+      g.emit('gale', this.wind);
+    }
+    if (this.galeT > 0) {
+      this.galeT -= dt;
+      const t = WIND.duration - this.galeT;
+      this.wind.s = Math.min(1, t / 2, this.galeT / 2);
+      if (this.galeT <= 0) {
+        this.wind.s = 0;
+        g.emit('galeEnd');
+      }
+    }
 
     // ---- T1: raindrops (telegraphed) and dew
     this.timers.drop -= dt;
@@ -242,8 +270,8 @@ export class Weather {
         c.x = c.bound.pos.x;
         c.z = c.bound.pos.z;
       } else {
-        c.x += c.vx * dt;
-        c.z += c.vz * dt;
+        c.x += (c.vx + this.wind.x * this.wind.s * 6) * dt;
+        c.z += (c.vz + this.wind.z * this.wind.s * 6) * dt;
       }
       const grow = Math.min(1, c.t / 3);
       const fade = c.life - c.t < 4 ? Math.max(0, (c.life - c.t) / 4) : 1;

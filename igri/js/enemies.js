@@ -155,6 +155,7 @@ export class Enemies {
       a.state = 'retreat';
       a.stateT = 3;
       this.stats.retreated++;
+      g.emit('ffDown', a);
     } else if (a.kind === 'truck') {
       this.explodeTruck(a, false);
     } else if (a.kind === 'heli') {
@@ -349,11 +350,13 @@ export class Enemies {
       if (a.stateT <= 0) this.remove(a);
       return;
     }
-    if (r >= 3 && d < r + 0.8) {
+    // big enough, or charging with a heat release: they break and run
+    if ((r >= 3 || g.player.dashing) && d < r + 0.9) {
       a.state = 'retreat';
       a.stateT = 3;
       this.stats.retreated++;
       g.emit('popup', '후퇴!', a.pos);
+      g.emit('ffDown', a);
       return;
     }
     const keep = r + 4.2;
@@ -470,6 +473,7 @@ export class Enemies {
         this.stats.helisDowned++;
         this.remove(a);
         g.blast(a.pos.x, a.pos.z, 20, Math.max(5, r), 3, 'blast');
+        g.emit('heliDown', a);
       }
       return;
     }

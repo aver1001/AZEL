@@ -2,7 +2,7 @@
 // Handles movement, dash (the "heat release" that can evaporate water),
 // consuming objects, bumps, fuel decay and all seven roguelike skills.
 import * as THREE from 'three';
-import { MASS, DAMAGE, DASH, SKILLS, tierForRadius } from './config.js';
+import { MASS, DAMAGE, DASH, SKILLS, COMBO, FEVER, tierForRadius } from './config.js';
 import { FIRE_NOISE } from './fx/flames.js';
 
 // A swirling pool of fire under Igri so the blaze reads from straight above.
@@ -88,6 +88,7 @@ export class Player {
     this.dashStart = -10;
     this.hurtCd = {};
     this.hurtLog = {};
+    this.gainLog = {};
     this.hurtFlash = 0;
     this.steam = 0;
     this.alive = true;
@@ -102,6 +103,15 @@ export class Player {
     this.inRain = false;
     this.bumpCd = 0;
     this.time = 0;
+    // fun layer
+    this.combo = 0;
+    this.comboT = 0;
+    this.comboMax = 0;
+    this.fever = 0; // gauge 0..1
+    this.feverT = 0; // seconds of 화염 폭주 left
+    this.auraT = 0;
+    this.invuln = 0;
+    this.secondChance = true;
 
     const scene = g.scene;
     this.group = new THREE.Group();
@@ -159,12 +169,47 @@ export class Player {
     if (!this.alive) return;
     const mul = source === 'direct' ? 1 : source === 'skill' ? 0.65 : 0.4;
     const f = fuel * mul;
+    this.gainLog[source] = (this.gainLog[source] || 0) + f;
     this.setMass(this.mass + f);
     this.gainAcc += f;
   }
 
+  /** Book a consumption: keeps the combo alive, fills the fever gauge, pays fuel. */
+  consume(id, kind = 'direct') {
+    const f = this.g.field;
+    const fuel = f.fuel[id];
+    this.combo++;
+    this.comboT = COMBO.window;
+    if (this.combo > this.comboMax) this.comboMax = this.combo;
+    const bonus = 1 + Math.min(COMBO.fuelCap, this.combo * COMBO.fuelPerStep);
+    this.gain(fuel * bonus * (this.feverT > 0 ? FEVER.fuel : 1), kind);
+    if (this.feverT <= 0) {
+      this.fever = Math.min(1, this.fever + Math.min(0.02, 0.004 + (fuel / Math.max(1, this.mass)) * 0.15));
+      if (this.fever >= 1) this.startFever();
+    }
+    this.g.emit('consume', id, this.combo, kind);
+  }
+
+  /** Swallow small things whole; bigger ones catch fire where they stand. */
+  eat(id) {
+    const f = this.g.field;
+    const small = f.size[id] < this.r * 0.55 && f.height[id] < this.r * 2.4;
+    const ok = small ? f.devour(id) : f.ignite(id, 0);
+    if (ok) this.consume(id, 'direct');
+  }
+
+  skillEat(id) {
+    if (this.g.field.ignite(id, 2)) this.consume(id, 'skill');
+  }
+
+  startFever() {
+    this.fever = 0;
+    this.feverT = FEVER.duration;
+    this.g.emit('fever');
+  }
+
   hurt(fraction, kind, x, z) {
-    if (!this.alive || fraction <= 0) return;
+    if (!this.alive || fraction <= 0 || this.invuln > 0) return;
     const coal = this.skills.coal;
     const f = fraction * (1 - coal * 0.1);
     this.hurtLog[kind] = (this.hurtLog[kind] || 0) + this.mass * f;
@@ -189,10 +234,31 @@ export class Player {
     for (const k in this.hurtCd) this.hurtCd[k] -= dt;
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 1.5);
     this.bumpCd -= dt;
+    this.invuln = Math.max(0, this.invuln - dt);
+
+    // combo chain and fever
+    if (this.combo > 0) {
+      this.comboT -= dt;
+      if (this.comboT <= 0) {
+        g.emit('comboEnd', this.combo);
+        this.combo = 0;
+      }
+    } else this.fever = Math.max(0, this.fever - dt * 0.015);
+    if (this.feverT > 0) {
+      this.feverT -= dt;
+      if (this.feverT <= 0) g.emit('feverEnd');
+    }
+    const fever = this.feverT > 0;
 
     // ------------------------------------------------ movement
     const mv = this.control ? input.move(this.pos) : { x: 0, z: 0 };
-    const speed = MASS.speed(this.r) * (1 + this.skills.wind * 0.12);
+    let speed = MASS.speed(this.r) * (1 + this.skills.wind * 0.12) * (fever ? FEVER.speed : 1);
+    const wind = g.weather ? g.weather.wind : null;
+    if (wind && wind.s > 0 && (mv.x || mv.z)) {
+      // riding the gale
+      const l = Math.hypot(mv.x, mv.z);
+      speed *= 1 + 0.3 * wind.s * Math.max(0, (mv.x * wind.x + mv.z * wind.z) / l);
+    }
     const tx = mv.x * speed, tz = mv.z * speed;
     const k = 1 - Math.exp(-dt * 7);
     this.vel.x += (tx - this.vel.x) * k;
@@ -220,17 +286,21 @@ export class Player {
     // ------------------------------------------------ consume / bump
     const r = this.r;
     const field = g.field;
+    field.pullTarget.copy(this.pos);
+    field.pullLift = Math.max(0.15, r * 0.6);
+    // the heat release (dash) and fever both let Igri swallow a size up
+    const tol = (fever ? FEVER.reach : 1) * (this.dashing ? 1.15 : 1);
+    const reach = fever || this.dashing ? 1.25 : 1;
     let bumped = false;
-    field.query(this.pos.x, this.pos.z, r + 0.2, (id, d) => {
+    field.query(this.pos.x, this.pos.z, r * reach + 0.2, (id, d) => {
       const st = field.state[id];
       const size = field.size[id];
       if (st === 2) return;
-      if (st === 0 && d < r + size * 0.6 && field.need[id] <= r) {
-        field.ignite(id, 0);
-        this.gain(field.fuel[id], 'direct');
+      if (st === 0 && d < r * reach + size * 0.6 && field.need[id] <= r * tol) {
+        this.eat(id);
         return;
       }
-      if ((st === 3 || (st === 0 && field.need[id] > r)) && size > 0.12 && d < r * 0.8 + size) {
+      if ((st === 3 || (st === 0 && field.need[id] > r * tol)) && size > 0.12 && d < r * 0.8 + size) {
         // too big (or retardant-coated): shove back and lose a bit
         const dx = this.pos.x - field.x[id], dz = this.pos.z - field.z[id];
         const l = Math.hypot(dx, dz) || 1;
@@ -271,9 +341,28 @@ export class Player {
     this.burnRate += (this.gainAcc / Math.max(dt, 1e-3) - this.burnRate) * Math.min(1, dt * 1.2);
     this.gainAcc = 0;
     this.steam = Math.max(0, this.steam - dt * 0.35);
+    if (fever) {
+      // 화염 폭주: everything close enough is pulled in on its own
+      this.auraT -= dt;
+      if (this.auraT <= 0) {
+        this.auraT = 0.12;
+        const ar = r * FEVER.aura + 0.5;
+        field.query(this.pos.x, this.pos.z, ar, (id, d) => {
+          if (field.state[id] === 0 && d < ar && field.need[id] <= r * FEVER.reach) this.eat(id);
+        });
+      }
+    }
     if (this.mass < MASS.min && this.alive) {
-      this.alive = false;
-      g.emit('dead');
+      if (this.secondChance) {
+        // the last ember refuses to die — once
+        this.secondChance = false;
+        this.setMass(4);
+        this.invuln = 3.5;
+        g.emit('lastEmber');
+      } else {
+        this.alive = false;
+        g.emit('dead');
+      }
     }
 
     // scorch trail
@@ -342,10 +431,7 @@ export class Player {
       g.flames.set(f.slot, f.x, 0, f.z, f.r * 2, f.r * 2.2 * (0.4 + k), 0.7 * k);
       if (Math.random() < dt * 6) {
         g.field.query(f.x, f.z, f.r, (id) => {
-          if (g.field.state[id] === 0 && g.field.need[id] <= r * 0.8) {
-            g.field.ignite(id, 2);
-            this.gain(g.field.fuel[id], 'trail');
-          }
+          if (g.field.state[id] === 0 && g.field.need[id] <= r * 0.8) this.skillEat(id);
         });
         g.enemies.damageAt(f.x, f.z, f.r, 0.8 * dt * 6);
       }
@@ -397,10 +483,7 @@ export class Player {
         this.timers.heat = 0.2;
         const ar = r * (1.25 + s.heat * 0.2);
         g.field.query(x, z, ar, (id, d) => {
-          if (g.field.state[id] === 0 && g.field.need[id] <= r && d < ar) {
-            g.field.ignite(id, 2);
-            this.gain(g.field.fuel[id], 'skill');
-          }
+          if (g.field.state[id] === 0 && g.field.need[id] <= r && d < ar) this.skillEat(id);
         });
       }
     }
@@ -416,10 +499,7 @@ export class Player {
         g.flames.set(o.slot, o.x, 0, o.z, w, w * 1.6, 1);
         const hr = r * 0.5 + 0.2;
         g.field.query(o.x, o.z, hr, (id) => {
-          if (g.field.state[id] === 0 && g.field.need[id] <= r) {
-            g.field.ignite(id, 2);
-            this.gain(g.field.fuel[id], 'skill');
-          }
+          if (g.field.state[id] === 0 && g.field.need[id] <= r) this.skillEat(id);
         });
         g.enemies.damageAt(o.x, o.z, hr + 1, 1.5 * dt);
         if (g.boss && g.boss.active) g.boss.damageAt(o.x, o.z, hr, 1 * dt);
@@ -476,10 +556,7 @@ export class Player {
         if (alive && p.t <= 3) {
           if (p.target.obj !== undefined) {
             const id = p.target.obj;
-            if (g.field.state[id] === 0) {
-              g.field.ignite(id, 2);
-              this.gain(g.field.fuel[id], 'skill');
-            }
+            if (g.field.state[id] === 0) this.skillEat(id);
           } else if (p.target.boss) {
             g.boss.hurt(0.6 + this.skills.spark * 0.15, 'spark');
           } else {
@@ -501,7 +578,8 @@ export class Player {
     const t = this.time;
     const pulse = 1 + Math.sin(t * 9) * 0.05 + Math.sin(t * 23) * 0.03;
     const hot = this.alive ? 1 : 0;
-    const dashBoost = this.dashing ? 1.3 : 1;
+    const feverOn = this.feverT > 0;
+    const dashBoost = (this.dashing ? 1.3 : 1) * (feverOn ? 1.3 : 1);
     const H = r * 3.4 * pulse * dashBoost;
     g.flames.set(this.slots[0], x, -r * 0.1, z, r * 2.6, H, 0.6 * hot);
     g.flames.set(this.slots[1], x, 0, z, r * 1.6, H * 0.7, 0.5 * hot);
@@ -512,19 +590,23 @@ export class Player {
     this.disc.position.set(x, 0.05 + r * 0.01, z);
     this.disc.scale.setScalar(r * 1.45);
     this.disc.material.uniforms.uTime.value = t;
-    this.disc.material.uniforms.uHeat.value = hot * (r < 1 ? 0.3 : r < 3 ? 0.55 : 0.8);
-    const want = this.alive ? Math.min(16, r >= 2.5 ? 5 + Math.floor(r * 0.6) : 0) : 0;
+    this.disc.material.uniforms.uHeat.value = hot * (feverOn ? 1.1 : r < 1 ? 0.3 : r < 3 ? 0.55 : 0.8);
+    if (feverOn) this.disc.scale.setScalar(r * FEVER.aura * 0.9);
+    const want = this.alive ? Math.min(16, feverOn ? 8 + Math.floor(r * 0.6) : r >= 2.5 ? 5 + Math.floor(r * 0.6) : 0) : 0;
     while (this.ringSlots.length < want) this.ringSlots.push(g.flames.alloc());
     while (this.ringSlots.length > want) g.flames.release(this.ringSlots.pop());
     for (let i = 0; i < this.ringSlots.length; i++) {
       const a = (i / this.ringSlots.length) * Math.PI * 2 + t * 0.6;
       const wob = 0.75 + 0.25 * Math.sin(t * 3 + i * 1.7);
-      const rr = r * (0.72 + 0.12 * Math.sin(t * 1.3 + i));
+      const rr = r * (feverOn ? FEVER.aura * 0.8 : 0.72 + 0.12 * Math.sin(t * 1.3 + i));
       g.flames.set(this.ringSlots[i], x + Math.cos(a) * rr, 0, z + Math.sin(a) * rr, r * 0.9, r * 1.9 * wob, 0.5);
     }
     this.glow.position.set(x, r * 0.7, z);
-    this.glow.scale.setScalar(r * 2.6 * pulse);
-    this.glow.material.opacity = 0.4 * hot;
+    this.glow.scale.setScalar(r * (feverOn ? 3.2 : 2.6) * pulse);
+    // white-hot during fever, flickering while invulnerable
+    if (feverOn) this.glow.material.color.setRGB(1.6, 1.25, 1.1);
+    else this.glow.material.color.setRGB(1.5, 0.62, 0.2);
+    this.glow.material.opacity = (feverOn ? 0.55 : 0.4) * hot * (this.invuln > 0 && Math.sin(t * 30) > 0 ? 0.3 : 1);
 
     // eyes follow the direction of travel; blink now and then
     this.blinkT -= dt;
@@ -557,7 +639,7 @@ export class Player {
     this.light.intensity = this.alive ? (0.4 + r * r * 5) * pulse : 0;
     this.light.distance = r * 14 + 4;
 
-    if (Math.random() < dt * (6 + r)) g.fx.ember(x, r, z, Math.max(0.12, r * 0.5), 1);
+    if (Math.random() < dt * (6 + r) * (feverOn ? 4 : 1)) g.fx.ember(x, r, z, Math.max(0.12, r * (feverOn ? 0.9 : 0.5)), 1);
     if (Math.random() < dt * 2.5) g.fx.smoke(x, r * 2.2, z, Math.max(0.2, r * 0.9), 0.6);
     if (this.steam > 0.3 && Math.random() < dt * 20) g.fx.steam(x, r, z, Math.max(0.3, r * 0.9), 1);
   }
