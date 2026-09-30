@@ -194,9 +194,10 @@ def forward_yaw(q_root):
     return np.unwrap(np.arctan2(f[..., 0], f[..., 2]))
 
 
-def in_place(q, root, fps):
+def in_place(q, root, fps, info=None):
     """Strip heading drift and ground travel (the game steers agents itself).
-    Returns (q, root, ground speed in m/s)."""
+    Returns (q, root, ground speed in m/s); `info` receives forward/lateral
+    speed along the (de-trended) facing direction."""
     T = len(q)
     t = np.arange(T) / fps
     yaw = forward_yaw(q[:, 0])
@@ -210,6 +211,10 @@ def in_place(q, root, fps):
     dist = np.linalg.norm(np.diff(root[:, [0, 2]], axis=0), axis=1).sum()
     speed = dist / max(t[-1], 1e-6)
     fit = np.stack([np.polyval(np.polyfit(t, rel[:, k], 1), t) for k in range(2)], -1) if T > 2 else rel
+    if info is not None and T > 2:
+        info['forward'] = float(np.polyfit(t, rel[:, 1], 1)[0])
+        info['lateral'] = float(abs(np.polyfit(t, rel[:, 0], 1)[0]))
+        info['turn'] = float(np.degrees(abs(b)))
     root = root.copy()
     root[:, 0] = rel[:, 0] - fit[:, 0]
     root[:, 2] = rel[:, 1] - fit[:, 1]
@@ -404,47 +409,96 @@ def cmd_to_clips(args):
     use_unimate(args.unimate)
     rigs = json.load(open(args.rigs))
     cond = load_cond(args.features)
-    capf = os.path.join(os.path.dirname(os.path.abspath(args.motions)), 'captions.json')
-    caps = json.load(open(capf)) if os.path.exists(capf) else {}
-    pick = {k: int(v) for k, v in (p.split('=') for p in args.pick)}
+    caps = {}
+    pick = dict(p.split('=') for p in args.pick)
     reps = {}
-    for path in sorted(glob.glob(os.path.join(args.motions, '*.npy'))):
-        m = re.match(r'^([^-]+)-(.+)-rep_(\d+)-(\d+)\.npy$', os.path.basename(path))
-        if m and m.group(1) in rigs:
-            reps.setdefault(f'{m.group(1)}-{m.group(2)}', {})[int(m.group(3))] = path
-    # the repetition asked for with --pick, else the first one
-    chosen = {}
-    for key, by_rep in reps.items():
-        rep = pick.get(key, min(by_rep))
-        if rep not in by_rep:
-            sys.exit(f'{key}: no repetition {rep} (have {sorted(by_rep)})')
-        chosen[key] = (by_rep[rep], rep)
-    lib = {}
+    # several sample dirs can be pooled; a case id "gallop~b" is an alternative
+    # prompt for the clip "gallop", and its takes are labelled b0, b1, …
+    for motions in args.motions:
+        capf = os.path.join(os.path.dirname(os.path.abspath(motions)), 'captions.json')
+        caps.update(json.load(open(capf)) if os.path.exists(capf) else {})
+        for path in sorted(glob.glob(os.path.join(motions, '*.npy'))):
+            m = re.match(r'^([^-]+)-([^~]+)(?:~(\w+))?-rep_(\d+)-(\d+)\.npy$', os.path.basename(path))
+            if m and m.group(1) in rigs:
+                take = f'{m.group(3) or ""}{m.group(4)}'
+                reps.setdefault(f'{m.group(1)}-{m.group(2)}', {})[take] = path
     idle_like = re.compile(r'idle|graze|look|aim|stand|peck')
-    for key, (path, rep) in sorted(chosen.items()):
+    fps = args.fps
+
+    def process(key, path):
         ot, clip = key.split('-', 1)
         rig = rigs[ot]
-        fps = args.fps
         q, root, fr = decode(np.load(path), cond[ot], rig)
-        q, root, speed = in_place(q, root, fps)
-        q, root = smooth(q, root, args.smooth)
+        info = {}
+        q, root, speed = in_place(q, root, fps, info)
         leaf = is_leaf(rig['parents'])
-        min_len = 1.2 if idle_like.search(clip) else 0.35
+        info['jitter'] = float(np.percentile(np.degrees(qangle(q[1:, ~leaf], q[:-1, ~leaf])), 95))
+        q, root = smooth(q, root, args.smooth)
+        # a loop must hold at least most of one cycle of the hand-keyed version
+        hand = rig['clips'].get(clip)
+        cycle = hand['frames'] / hand['fps'] if hand else 1.0
+        min_len = 1.2 if idle_like.search(clip) else max(0.3, 0.75 * cycle)
         q, root, cost = make_loop(q, root, leaf, fps, min_len)
+        info['seam'] = float(cost)
+        # judge against the hand-keyed clip the game was tuned with
+        want = rig['clips'].get(clip, {}).get('speed', 0) or 0
+        bad = []
+        if want > 0:
+            ratio = info.get('forward', 0) / want
+            if not 0.35 <= ratio <= 2.5:
+                bad.append(f'forward speed {info.get("forward", 0):.2f} m/s vs {want:.2f} expected')
+            if info.get('lateral', 0) > 0.5 * max(info.get('forward', 0), 1e-6):
+                bad.append('drifts sideways')
+            score = abs(np.log(max(ratio, 1e-3))) + cost
+        else:
+            if speed > 0.35:
+                bad.append(f'travels {speed:.2f} m/s while it should stay put')
+            score = cost
+        if info['jitter'] > args.max_jitter:
+            bad.append(f'jitter {info["jitter"]:.0f}°/frame')
+        score += info['jitter'] / 60
+        return dict(q=q, root=root, speed=speed, info=info, bad=bad, score=score)
+
+    chosen = {}
+    for key, by_rep in sorted(reps.items()):
+        if key in pick:
+            if pick[key] not in by_rep:
+                sys.exit(f'{key}: no repetition {pick[key]} (have {sorted(by_rep)})')
+            candidates = [pick[key]]
+        else:
+            candidates = sorted(by_rep) if args.auto else [min(by_rep, key=lambda t: (len(t), t))]
+        results = {r: process(key, by_rep[r]) for r in candidates}
+        for r, res in results.items():
+            i = res['info']
+            print(f'  {key:22s} take {r:3s} fwd {i.get("forward", 0):5.2f}  side {i.get("lateral", 0):4.2f}  '
+                  f'turn {i.get("turn", 0):4.0f}°/s  jitter {i["jitter"]:4.0f}°  seam {i["seam"]:.3f}  score {res["score"]:.2f}'
+                  + (f'  ✗ {"; ".join(res["bad"])}' if res['bad'] else ''))
+        ok = {r: res for r, res in results.items() if not res['bad'] or key in pick}
+        if not ok:
+            print(f'{key:24s} skipped — no usable repetition, the hand-keyed clip stays')
+            continue
+        r = min(ok, key=lambda r: ok[r]['score'])
+        chosen[key] = (by_rep[r], r, ok[r])
+
+    lib = {}
+    for key, (path, rep, res) in sorted(chosen.items()):
+        ot, clip = key.split('-', 1)
+        rig = rigs[ot]
+        q, root, speed, cost = res['q'], res['root'], res['speed'], res['info']['seam']
         q = q[..., [1, 2, 3, 0]]  # → xyzw for three.js
         # joints that never leave the rest pose (leaves, mostly) need no track
         keep = [j for j in range(q.shape[1]) if j == 0 or np.abs(np.abs(q[:, j, 3]) - 1).max() > 1e-5]
         q = q[:, keep]
         data = {
             'name': clip, 'rig': rig['rig'], 'fps': fps, 'frames': len(q), 'loop': True,
-            'speed': round(0 if idle_like.search(clip) else speed, 3), 'source': 'unimate',
+            'speed': round(0 if idle_like.search(clip) else res['info'].get('forward', speed), 3), 'source': 'unimate',
             'prompt': caps.get(os.path.basename(path), ''),
             'joints': [rig['joints'][j] for j in keep],
             'rot': [round(float(v), 3) for v in q.reshape(-1)],
             'root': [round(float(v), 3) for v in root.reshape(-1)],
         }
         lib.setdefault(rig['rig'], []).append(data)
-        print(f'{key:24s} rep {rep}  {len(q):3d} frames ({len(q) / fps:.2f}s loop, seam {cost:.3f})  '
+        print(f'{key:24s} take {rep:3s} {len(q):3d} frames ({len(q) / fps:.2f}s loop, seam {cost:.3f})  '
               f'speed {data["speed"]:.2f} m/s  "{data["prompt"]}"')
     body = json.dumps(lib, separators=(',', ':'))
     with open(args.out, 'w') as f:
@@ -481,12 +535,14 @@ def main():
 
     p = sub.add_parser('to_clips')
     p.add_argument('--unimate', required=True)
-    p.add_argument('--motions', required=True, help='<exp_dir>/samples/motions (or --output_dir/motions)')
+    p.add_argument('--motions', required=True, nargs='+', help='one or more <output_dir>/motions folders')
     p.add_argument('--rigs', default=os.path.join(work, 'rigs.json'))
     p.add_argument('--features', default=os.path.join(work, 'features'))
-    p.add_argument('--pick', nargs='*', default=[], help='choose a repetition, e.g. IgriRabbit-hop=2')
+    p.add_argument('--pick', nargs='*', default=[], help='choose a take, e.g. IgriRabbit-hop=2 or IgriDeer-gallop=b1')
     p.add_argument('--fps', type=int, default=30)
     p.add_argument('--smooth', type=float, default=1.0, help='temporal smoothing sigma in frames (0 = off)')
+    p.add_argument('--auto', action='store_true', help='score every repetition, keep the best usable one per clip')
+    p.add_argument('--max_jitter', type=float, default=35, help='95th-percentile per-frame joint rotation (deg) above which a take is rejected')
     p.add_argument('--out', default=os.path.join(IGRI, 'js', 'models', 'clips', 'unimate.js'))
 
     args = ap.parse_args()

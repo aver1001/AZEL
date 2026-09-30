@@ -1,0 +1,12 @@
+{
+  "IgriHuman-panic~b": "a person sprints forward in a panic, waving both arms in the air",
+  "IgriHuman-panic~c": "a frightened person runs forward as fast as possible",
+  "IgriRabbit-run~b": "a rabbit runs forward fast",
+  "IgriRabbit-run~c": "a rabbit bounds forward quickly in long leaps",
+  "IgriSquirrel-run~b": "a squirrel runs forward fast",
+  "IgriSquirrel-run~c": "a squirrel scampers forward quickly",
+  "IgriDeer-gallop~b": "a deer runs forward fast",
+  "IgriDeer-gallop~c": "a deer gallops forward",
+  "IgriBird-fly~b": "a bird flies forward",
+  "IgriBird-fly~c": "a bird flaps its wings rapidly while flying forward"
+}
