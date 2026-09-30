@@ -1,13 +1,26 @@
 // Everything that moves: small animals (a threat to an ember, food for a
-// campfire), residents who flee and evacuate, and the escalating response —
-// firefighters with extinguishers, fire trucks with water cannons (weak rear
-// engine), and helicopters that lay fire-retardant lines and drop water.
+// campfire), deer and ground birds that bolt from the fire, residents who
+// flee and evacuate, and the escalating response — firefighters with
+// extinguishers, fire trucks with water cannons (weak rear engine), and
+// helicopters that lay fire-retardant lines and drop water.
+// People and animals are skinned rigs driven by motion clips (models/rigs.js,
+// models/clips/); vehicles stay rigid.
 import * as THREE from 'three';
 import { DAMAGE } from './config.js';
-import { rabbitGeo, squirrelGeo, personGeo, firefighterGeo, truckGeo, truckEngineGeo, heliGeo, rotorGeo, bucketGeo } from './models/agents.js';
+import { truckGeo, truckEngineGeo, heliGeo, rotorGeo, bucketGeo } from './models/agents.js';
+import { createRigInstance } from './models/rigs.js';
+import { clipsFor } from './models/clips/index.js';
+import { Animator } from './models/motion.js';
 
 const SHIRTS = [0x4f7fb8, 0xd9d9d9, 0xc9574b, 0x6aa06a, 0xe0b44a, 0x8a6fb0, 0x5a5a60];
 const tmp = new THREE.Vector3();
+
+// prey: player radius that can eat it · spook: extra flee distance · threat: hurts a small ember
+const SPECIES = {
+  rabbit: { prey: 0.9, fuel: 3.2, flee: 4.5, wander: 1.6, spook: 0, threat: true, reach: 0.25 },
+  squirrel: { prey: 0.9, fuel: 2.6, flee: 5, wander: 1.7, spook: 0, threat: true, reach: 0.2 },
+  deer: { prey: 1.7, fuel: 8, flee: 7.2, wander: 1.3, spook: 9, threat: false, reach: 0.7 },
+};
 
 function ringMesh(color) {
   const geo = new THREE.RingGeometry(0.9, 1, 48);
@@ -25,17 +38,13 @@ export class Enemies {
     const lam = new THREE.MeshLambertMaterial({ vertexColors: true });
     this.mat = lam;
     this.geo = {
-      rabbit: rabbitGeo(),
-      squirrel: squirrelGeo(),
-      firefighter: firefighterGeo(),
       truck: truckGeo(),
       engine: truckEngineGeo(),
       heli: heliGeo(),
       rotor: rotorGeo(),
       bucket: bucketGeo(),
-      people: SHIRTS.map((c) => personGeo(c)),
     };
-    this.spawnT = { animal: 0, civ: 0, ff: 2, truck: 4, heli: 6 };
+    this.spawnT = { animal: 0, bird: 3, civ: 0, ff: 2, truck: 4, heli: 6 };
     this.stats = {
       firefighters: 0, trucks: 0, helis: 0, evacuated: 0, injured: 0,
       animalsLost: 0, retreated: 0, trucksDestroyed: 0, helisDowned: 0, retardantDrops: 0,
@@ -45,6 +54,12 @@ export class Enemies {
   count(kind) {
     let n = 0;
     for (const a of this.list) if (a.kind === kind && !a.dead) n++;
+    return n;
+  }
+
+  countSpecies(sp) {
+    let n = 0;
+    for (const a of this.list) if (a.species === sp && !a.dead) n++;
     return n;
   }
 
@@ -64,16 +79,25 @@ export class Enemies {
     return best;
   }
 
+  rigged(type, variant, extra) {
+    const rig = createRigInstance(type, variant);
+    extra.rig = rig;
+    extra.anim = new Animator(rig, clipsFor(type));
+    return rig.object;
+  }
+
   add(kind, x, z, extra = {}) {
     let mesh;
     const g = this.g;
     if (kind === 'animal') {
-      const sq = Math.random() < 0.45;
-      mesh = new THREE.Mesh(sq ? this.geo.squirrel : this.geo.rabbit, this.mat);
+      extra.species ||= Math.random() < 0.45 ? 'squirrel' : 'rabbit';
+      mesh = this.rigged(extra.species, {}, extra);
+    } else if (kind === 'bird') {
+      mesh = this.rigged('bird', {}, extra);
     } else if (kind === 'civ') {
-      mesh = new THREE.Mesh(this.geo.people[Math.floor(Math.random() * SHIRTS.length)], this.mat);
+      mesh = this.rigged('human', { shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)] }, extra);
     } else if (kind === 'ff') {
-      mesh = new THREE.Mesh(this.geo.firefighter, this.mat);
+      mesh = this.rigged('firefighter', {}, extra);
       this.stats.firefighters++;
     } else if (kind === 'truck') {
       mesh = new THREE.Group();
@@ -105,10 +129,15 @@ export class Enemies {
     g.scene.add(mesh);
     const a = {
       kind, mesh, pos: mesh.position, vel: new THREE.Vector3(), yaw: Math.random() * 6.28,
-      hp: { animal: 1, civ: 1, ff: 1.5, truck: 8, heli: 10 }[kind], t: 0, dead: false, state: 'idle', stateT: 0,
-      aimYaw: 0, target: null, ...extra,
+      hp: { animal: 1, bird: 1, civ: 1, ff: 1.5, truck: 8, heli: 10 }[kind], t: 0, dead: false, state: 'idle', stateT: 0,
+      aimYaw: 0, target: null, spd: 0, lx: x, lz: z, pauseT: 0, ...extra,
     };
-    if (kind === 'animal') a.scale = 0.9 + Math.random() * 0.4;
+    mesh.rotation.y = a.yaw;
+    if (kind === 'animal') a.scale = a.species === 'deer' ? 0.85 + Math.random() * 0.3 : 0.9 + Math.random() * 0.4;
+    if (kind === 'bird') {
+      a.scale = (g.player.tier.id >= 2 ? 1.7 : 1.1) + Math.random() * 0.3;
+      mesh.scale.setScalar(a.scale);
+    }
     if (kind === 'heli') {
       a.alt = 30 + g.player.r * 1.6;
       a.pos.y = a.alt;
@@ -140,7 +169,7 @@ export class Enemies {
 
   damageAt(x, z, r, amount) {
     for (const a of this.list) {
-      if (a.dead || a.kind === 'civ' || a.kind === 'animal') continue;
+      if (a.dead || a.kind === 'civ' || a.kind === 'animal' || a.kind === 'bird') continue;
       const reach = a.kind === 'truck' ? 3.5 : a.kind === 'heli' ? 5 : 0.5;
       if (Math.hypot(a.pos.x - x, a.pos.z - z) < r + reach) this.damage(a, amount);
     }
@@ -188,7 +217,22 @@ export class Enemies {
       this.spawnT.animal = 1.2;
       if (tier <= 2 && (zone === 'forest' || zone === 'rural') && this.count('animal') < (tier === 1 ? 7 : 12)) {
         const sp = this.spawnPoint(tier === 1 ? 5 + Math.random() * 6 : view * 0.7);
-        if (sp) this.add('animal', sp.x, sp.z, { curious: Math.random() < 0.45 });
+        const deer = tier === 2 && Math.random() < 0.3 && this.countSpecies('deer') < 4;
+        if (sp) this.add('animal', sp.x, sp.z, { curious: Math.random() < 0.45, species: deer ? 'deer' : undefined });
+      }
+    }
+    if (this.spawnT.bird <= 0) {
+      this.spawnT.bird = 3.5;
+      if (tier <= 2 && (zone === 'forest' || zone === 'rural') && this.count('bird') < (tier === 1 ? 8 : 12)) {
+        const sp = this.spawnPoint(tier === 1 ? 6 + Math.random() * 5 : view * 0.6);
+        const n = 3 + Math.floor(Math.random() * 3);
+        const spread = tier === 1 ? 0.9 : 2;
+        if (sp) {
+          for (let k = 0; k < n; k++) {
+            const bx = sp.x + (Math.random() - 0.5) * spread * 2, bz = sp.z + (Math.random() - 0.5) * spread * 2;
+            if (!g.layout.isWater(bx, bz)) this.add('bird', bx, bz, { flock: sp });
+          }
+        }
       }
     }
     if (this.spawnT.civ <= 0) {
@@ -253,6 +297,30 @@ export class Enemies {
         continue;
       }
       this['tick_' + a.kind](a, dt, d, dx, dz, r, tier, cloak, view);
+      if (a.anim && !a.dead) this.animate(a, dt, d, view);
+    }
+  }
+
+  /** Pick the clip from state and measured ground speed; far agents tick at a low rate. */
+  animate(a, dt, d, view) {
+    const vx = a.pos.x - a.lx, vz = a.pos.z - a.lz;
+    a.lx = a.pos.x;
+    a.lz = a.pos.z;
+    const v = Math.hypot(vx, vz) / Math.max(dt, 1e-4);
+    a.spd += (v - a.spd) * Math.min(1, dt * 8);
+    const sp = a.spd / (a.scale || 1);
+    let clip = 'idle';
+    if (a.kind === 'civ') clip = a.state === 'flee' ? 'panic' : sp > 0.25 ? 'walk' : 'idle';
+    else if (a.kind === 'ff') clip = a.state === 'retreat' ? 'panic' : sp > 0.5 ? 'run' : a.spraying ? 'aim' : 'idle';
+    else if (a.kind === 'bird') clip = a.state === 'fly' ? 'fly' : 'idle';
+    else if (a.species === 'deer') clip = sp > 3 ? 'gallop' : sp > 0.2 ? 'walk' : 'idle';
+    else clip = sp > 2.6 ? 'run' : sp > 0.2 ? 'hop' : 'idle';
+    a.anim.play(clip, sp);
+    a.animAcc = (a.animAcc || 0) + dt;
+    const every = d > view * 1.3 ? 0.2 : 0;
+    if (a.animAcc >= every) {
+      a.anim.update(a.animAcc);
+      a.animAcc = 0;
     }
   }
 
@@ -275,28 +343,31 @@ export class Enemies {
     return d;
   }
 
-  tick_animal(a, dt, d, dx, dz, r, tier) {
+  tick_animal(a, dt, d, dx, dz, r) {
     const g = this.g;
+    const sp = SPECIES[a.species];
     a.mesh.scale.setScalar(a.scale);
     a.stateT -= dt;
-    if (r >= 0.9) {
+    if (r >= sp.prey) {
       // prey now
-      if (d < r + 0.25) {
+      if (d < r + sp.reach * a.scale) {
         this.stats.animalsLost++;
-        g.player.gain(3.2, 'direct');
-        g.fx.burst(a.pos.x, 0.2, a.pos.z, 0.3, 10);
-        g.fx.smoke(a.pos.x, 0.3, a.pos.z, 0.5, 0.6);
+        g.player.gain(sp.fuel, 'direct');
+        g.fx.burst(a.pos.x, 0.2, a.pos.z, 0.3 * a.scale, 10);
+        g.fx.smoke(a.pos.x, 0.3, a.pos.z, 0.5 * a.scale, 0.6);
         g.emit('animal');
         this.remove(a);
         return;
       }
-      if (d < r * 6 + 5) {
-        this.moveToward(a, a.pos.x - dx, a.pos.z - dz, 4.5 + Math.random(), dt, 8);
-      } else this.wander(a, dt, 1.2);
-    } else {
+      if (d < r * 6 + 5 + sp.spook) {
+        a.pauseT = 0;
+        this.moveToward(a, a.pos.x - dx, a.pos.z - dz, sp.flee + Math.random(), dt, 8);
+      } else this.wander(a, dt, sp.wander * 0.75);
+    } else if (sp.threat) {
       if (a.curious && d < 7) {
+        a.pauseT = 0;
         this.moveToward(a, g.player.pos.x, g.player.pos.z, 1.9, dt, 4);
-      } else this.wander(a, dt, 1.6);
+      } else this.wander(a, dt, sp.wander);
       if (d < r + 0.14) {
         if (g.player.hit('animal', DAMAGE.animal, 1.3)) {
           g.emit('popup', '밟혔다!', g.player.pos);
@@ -305,15 +376,73 @@ export class Enemies {
           this.moveToward(a, a.pos.x - dx * 5, a.pos.z - dz * 5, 3, 0.2);
         }
       }
+    } else if (d < r * 4 + sp.spook) {
+      // too big to eat yet, but it still bolts from a fire
+      a.pauseT = 0;
+      this.moveToward(a, a.pos.x - dx, a.pos.z - dz, sp.flee * 0.85, dt, 6);
+    } else this.wander(a, dt, sp.wander);
+  }
+
+  tick_bird(a, dt, d, dx, dz, r, tier, cloak, view) {
+    const g = this.g;
+    if (a.state === 'fly') {
+      const sp = 5.5 * a.scale;
+      a.pos.x += Math.sin(a.yaw) * sp * dt;
+      a.pos.z += Math.cos(a.yaw) * sp * dt;
+      a.vy = Math.min(a.vy + dt * 1.5, 3.5);
+      a.pos.y += a.vy * a.scale * 0.6 * dt;
+      a.mesh.rotation.x = -0.25;
+      if (a.pos.y > 14 + r * 2 || d > view * 2) this.remove(a);
+      return;
     }
-    a.pos.y = Math.abs(Math.sin(a.t * 9)) * 0.08 * a.scale;
+    if (a.state === 'startle') {
+      // a beat before take-off: a dash can still catch it
+      a.stateT -= dt;
+      if (a.stateT <= 0) {
+        a.state = 'fly';
+        a.vy = 1.5 + Math.random();
+        a.yaw = Math.atan2(-dx, -dz) + (Math.random() - 0.5) * 1.2;
+        a.mesh.rotation.y = a.yaw;
+        g.emit('birdsUp', a);
+      }
+    } else if (d < r * 3 + 2.4 || a.alarm) {
+      a.state = 'startle';
+      a.stateT = a.alarm ? Math.random() * 0.25 : 0.25 + Math.random() * 0.3;
+      for (const b of this.list) {
+        if (b.kind === 'bird' && b !== a && !b.dead && Math.hypot(b.pos.x - a.pos.x, b.pos.z - a.pos.z) < 4) b.alarm = true;
+      }
+    } else {
+      // peck about, turning now and then
+      a.stateT -= dt;
+      if (a.stateT <= 0) {
+        a.stateT = 0.8 + Math.random() * 2;
+        a.yaw += (Math.random() - 0.5) * 2;
+        a.mesh.rotation.y = a.yaw;
+      }
+    }
+    if (r >= 0.45 && d < r + 0.1 * a.scale) {
+      this.stats.animalsLost++;
+      g.player.gain(0.9, 'direct');
+      g.fx.burst(a.pos.x, 0.15, a.pos.z, 0.2, 6);
+      g.emit('animal');
+      this.remove(a);
+    }
   }
 
   wander(a, dt, speed) {
+    if (a.pauseT > 0) {
+      a.pauseT -= dt;
+      return;
+    }
     if (!a.target || a.stateT <= 0 || Math.hypot(a.target.x - a.pos.x, a.target.z - a.pos.z) < 0.3) {
       const ang = Math.random() * Math.PI * 2;
       a.target = { x: a.pos.x + Math.cos(ang) * (2 + Math.random() * 6), z: a.pos.z + Math.sin(ang) * (2 + Math.random() * 6) };
       a.stateT = 2 + Math.random() * 3;
+      // stop now and then to look around, sniff or graze
+      if (Math.random() < 0.4) {
+        a.pauseT = 1 + Math.random() * (a.species === 'deer' ? 5 : 2.5);
+        return;
+      }
     }
     this.moveToward(a, a.target.x, a.target.z, speed, dt, 5);
   }
@@ -339,7 +468,6 @@ export class Enemies {
       a.stateT -= dt;
       this.wander(a, dt, 1.3);
     }
-    a.pos.y = Math.abs(Math.sin(a.t * (a.state === 'flee' ? 14 : 7))) * 0.06;
   }
 
   tick_ff(a, dt, d, dx, dz, r, tier, cloak) {
@@ -362,21 +490,22 @@ export class Enemies {
     const keep = r + 4.2;
     if (d > keep) {
       this.moveToward(a, g.player.pos.x, g.player.pos.z, 3.4, dt, 5);
-      a.pos.y = Math.abs(Math.sin(a.t * 12)) * 0.05;
     } else {
       a.yaw = Math.atan2(dx, dz);
       a.mesh.rotation.y = a.yaw;
     }
     // spray
     const range = r + 7.5;
-    if (d < range + 3) {
+    a.spraying = d < range + 3;
+    if (a.spraying) {
       const jitter = cloak ? Math.sin(a.t * 2.3) * 0.9 : Math.sin(a.t * 3) * 0.08;
       const aim = a.yaw + jitter;
       const fx = Math.sin(aim), fz = Math.cos(aim);
-      const nx = a.pos.x + fx * 0.5, nz = a.pos.z + fz * 0.5;
+      // nozzle sits in the right hand, held out in front
+      const nx = a.pos.x + fx * 0.85 - fz * 0.12, nz = a.pos.z + fz * 0.85 + fx * 0.12;
       for (let k = 0; k < 2; k++) {
         const sp = 9 + Math.random() * 4;
-        g.fx.foam(nx, 1.0, nz, (fx + (Math.random() - 0.5) * 0.35) * sp, 0.5 + Math.random(), (fz + (Math.random() - 0.5) * 0.35) * sp, 0.8);
+        g.fx.foam(nx, 1.3, nz, (fx + (Math.random() - 0.5) * 0.35) * sp, 0.5 + Math.random(), (fz + (Math.random() - 0.5) * 0.35) * sp, 0.8);
       }
       // is the player inside the cone?
       const ang = Math.acos(THREE.MathUtils.clamp((dx * fx + dz * fz) / (d || 1), -1, 1));

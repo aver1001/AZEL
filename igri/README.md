@@ -56,6 +56,12 @@ node tools/build-single.mjs   # dist/igri.html 생성
 
 수치는 모두 `js/config.js`의 `COMBO`, `FEVER`, `MISSIONS`, `CHALLENGES`, `WIND`에 있습니다.
 
+## 캐릭터 리그와 모션 (UniMate)
+
+사람과 동물은 스킨드 메시 골격(`js/models/rigs.js`)으로 다시 만들었고, 상태와 실제 이동 속도에 맞춰 모션 클립을 골라 재생합니다(걷기/달리기/패닉/소화기 조준, 깡충/질주, 풀 뜯기, 날갯짓 …). 모닥불 단계에는 불을 피해 달아나는 **사슴**, 불씨 단계부터는 다가가면 날아오르는 **새 떼**가 추가되었습니다(날기 직전에 대쉬로 잡을 수 있음).
+
+골격은 텍스트→모션 모델 [UniMate](https://github.com/Friedrich-M/UniMate)가 그대로 받을 수 있는 형태입니다. `tools/unimate/`로 골격을 UniMate 형식으로 내보내고, 생성된 모션을 게임 클립(`js/models/clips/unimate.js`)으로 변환합니다. 생성 결과가 없으면 손으로 키잉한 기본 동작이 재생됩니다. 자세한 순서는 [`tools/unimate/README.md`](tools/unimate/README.md), 확인은 `rigs.html`.
+
 ## 실제 산불 사진 넣기
 
 엔딩의 흑백 실사 컷인은 저작권 때문에 사진을 포함하지 않았습니다. 사용 허락을 받은(또는 퍼블릭 도메인) 사진을 `assets/ending/`에 넣고 `js/config.js`의 `ENDING.photos`에 경로를 적으세요.
@@ -73,14 +79,16 @@ igri/
   index.html          게임 셸, HUD, 오버레이
   css/style.css
   models.html         모든 절차적 모델 카탈로그(vibe3d식 미리보기)
+  rigs.html           리그 뷰어: 캐릭터별 모션 클립 재생, 뼈대 표시
   dev.html            월드 뷰어 (?x=&z=&r=&burn= 로 원하는 지점을 렌더)
   tools/build-single.mjs  단일 HTML 번들 빌드
+  tools/unimate/      UniMate 브리지(리그 내보내기, 변환·왕복 검증, 생성 모션 → 게임 클립)
   js/
     config.js         밸런스 수치 전부(티어, 가연물, 피해량, 수배 단계, 스킬)
     main.js           부팅, 상태 머신(타이틀→인트로→플레이→스킬 선택→엔딩), 프레임 루프
     render.js         렌더러, 블룸·그레이딩·틸트시프트·흑백, 티어 카메라, 대기(연기·폭풍)
     player.js         이그리: 이동, 대쉬/패링, 흡수·충돌, 연료 감소, 7개 스킬
-    enemies.js        동물, 주민, 소방관, 소방차, 소방 헬기
+    enemies.js        동물(토끼·다람쥐·사슴·새), 주민, 소방관, 소방차, 소방 헬기
     weather.js        빗방울, 이슬, 웅덩이, 비 구역, 상승 기류, 수증기
     boss.js           물의 정령과 탄막, 물대포, 해일
     missions.js       의뢰 체인과 긴급 과제
@@ -94,6 +102,9 @@ igri/
     world/terrain.js  지형, 물, 하늘
     fx/               불꽃 빌보드, 파티클, 폭발
     models/           낙엽부터 초고층 빌딩·소방차까지 절차적 로우폴리 모델
+    models/rigs.js    사람·동물 스킨드 리그 (UniMate 호환 관절 이름, 항등 휴식 회전)
+    models/motion.js  모션 클립 데이터 ↔ three.js AnimationClip, 상태별 애니메이터
+    models/clips/     손 키잉 기본 동작 + UniMate 생성 동작
 ```
 
 모델은 [vibe3d](https://github.com/vibe-stack/vibe3d)처럼 소스 코드 자체가 모델입니다. `js/models/catalog.js`의 함수 하나가 모델 하나이고, 수정 후 `models.html`에서 바로 확인할 수 있습니다.

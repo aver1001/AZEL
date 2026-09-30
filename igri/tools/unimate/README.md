@@ -1,0 +1,69 @@
+# UniMate 브리지
+
+[UniMate](https://github.com/Friedrich-M/UniMate)는 메시를 만드는 도구가 아니라, **리깅된 임의의 골격**에 텍스트 프롬프트로 **동작(모션)**을 생성하는 모델입니다. 그래서 이그리는 사람·동물을 다음과 같이 다시 만들었습니다.
+
+1. `js/models/rigs.js` — 주민·소방관·토끼·다람쥐·사슴·새를 **스킨드 메시 + 골격**으로 재모델링했습니다. 관절 이름은 UniMate 학습 데이터(Mixamo·Truebones)의 규칙을 따르고(`Hips`, `LeftUpLeg`, `L_Thigh`, `Tail`, `L_Wing` …), 휴식 자세는 회전 없이 오프셋만으로 정의했습니다(사람은 T-포즈, 모두 +Z를 바라봄). UniMate는 관절 회전을 자식 관절에 저장하므로 머리·귀·꼬리·날개 끝에 `End` 관절을 두었습니다.
+2. `js/models/clips/procedural.js` — 손으로 키잉한 기본 동작(걷기·달리기·패닉·조준, 깡충·질주, 풀 뜯기, 날갯짓 …). UniMate 결과가 없을 때 재생됩니다.
+3. `js/models/clips/unimate.js` — UniMate가 생성한 동작. 같은 이름의 클립이 있으면 기본 동작을 **덮어씁니다**. `rigs.html`에서 ✦ 표시와 프롬프트로 확인할 수 있습니다.
+
+이 폴더의 도구가 두 세계를 잇습니다.
+
+| 파일 | 역할 |
+|---|---|
+| `export_rigs.mjs` | 게임 리그(관절·부모·오프셋·정면 기준 골반)와 기본 동작을 `work/rigs.json`으로 내보냄 |
+| `igri_unimate.py prepare` | `rigs.json` → UniMate 1단계 NPZ → UniMate의 4단계 추출 코드(`process_object`)로 `cond.npy`와 정규화 클립 생성 |
+| `igri_unimate.py roundtrip` | 기본 동작을 UniMate 12차원 특징으로 인코딩한 뒤 다시 게임 리그로 디코딩해 오차 확인(모델 불필요) |
+| `igri_unimate.py merge` | 우리 오브젝트 타입(`IgriHuman` 등)을 체크포인트가 학습한 feature 폴더에 추가 |
+| `igri_unimate.py to_clips` | UniMate 샘플(`motions/*.npy`) → 제자리 루프 클립 → `js/models/clips/unimate.js` |
+| `prompts.json` | 동작별 프롬프트. UniMate `--test_cases_json` 형식 그대로 |
+
+검증 결과: 5개 골격, 14개 클립 모두 왕복 오차 **0.000 mm / 0.00°**(UniMate 정규화에서 스케일만 달라지고 정면 회전은 0°).
+
+## 실행 순서
+
+GPU가 있으면 빠르지만 CPU로도 됩니다. UniMate 쪽 설치는 그 저장소 README를 따르세요(Python 3.11, `Motion` 라이브러리, torch 등). 아래에서 `$UM`은 UniMate 클론 경로입니다.
+
+```bash
+# 0) 게임 리그 내보내기 (igri 폴더에서)
+npm i --no-save three@0.170.0
+node tools/unimate/export_rigs.mjs
+
+# 1) UniMate 형식으로 변환 + 왕복 검증
+python tools/unimate/igri_unimate.py prepare   --unimate $UM
+python tools/unimate/igri_unimate.py roundtrip --unimate $UM     # worst FK error 0.000 mm 이면 정상
+
+# 2) 체크포인트와 데이터셋 feature 받기 (Hugging Face — 폴더 구성은 받은 저장소에 맞게 조정)
+huggingface-cli download Linzhan/UniMate --local-dir $UM/outputs
+huggingface-cli download Linzhan/UniML3D --repo-type dataset --local-dir $UM/dataset
+#    받은 실험 폴더(config.json, dataset_stats.npy, checkpoints/)의 dataset.dataset_list에 있는
+#    multi-topology feature 폴더(예: objaverse)에 우리 골격을 추가
+python tools/unimate/igri_unimate.py merge --into $UM/dataset/features/objaverse
+
+# 3) 동작 생성 (UniMate 폴더에서)
+cd $UM
+python -m unimate.inference.sample \
+    --exp_dir outputs/uniml3d_60frames_graph_adaln \
+    --test_cases_json /path/to/igri/tools/unimate/prompts.json \
+    --num_repetitions 3 --only_save_motion \
+    --output_dir outputs/igri
+
+# 4) 게임 클립으로 변환 (마음에 드는 반복 번호는 --pick으로)
+cd /path/to/igri
+python tools/unimate/igri_unimate.py to_clips --unimate $UM \
+    --motions $UM/outputs/igri/motions --pick IgriRabbit-hop=2 IgriDeer-gallop=1
+```
+
+`rigs.html`을 열어 ✦ 클립을 확인하고, 게임을 다시 빌드하면 적용됩니다. 결과가 이상한 동작만 `unimate.js`에서 빼면 그 동작은 기본 동작으로 돌아갑니다.
+
+## 변환 규칙 (`to_clips`)
+
+- UniMate 정규화 공간(지름 2로 스케일, +Z 정면, 바닥 접지)을 T-포즈 비교로 구한 스케일·회전으로 게임 리그 공간에 되돌립니다.
+- 방향 전환과 이동은 게임이 조종하므로, 루트의 진행 방향 드리프트와 수평 이동을 제거하고 평균 속도만 `speed`로 남깁니다. 게임은 에이전트의 실제 속도와 이 값의 비율로 재생 속도를 맞춥니다.
+- 가장 비슷한 두 프레임 사이를 잘라 루프를 만들고(이동 동작 0.35초 이상, 대기 동작 1.2초 이상), 끝의 몇 프레임을 시작 직전 프레임으로 크로스페이드합니다.
+- 움직이지 않는 관절 트랙은 저장하지 않습니다.
+
+## 참고
+
+- 사람 골격은 소방관과 공유합니다. `IgriHuman-aim` 같은 동작은 소방관에게만 쓰입니다.
+- 새 동작을 추가하려면 `prompts.json`에 `"<오브젝트 타입>-<클립 이름>": "영어 프롬프트"`를 넣고, 게임 쪽(`enemies.js`의 `animate`)에서 그 클립 이름을 고르게 하면 됩니다.
+- `work/`는 중간 산출물 폴더라 저장소에 올리지 않습니다.

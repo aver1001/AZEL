@@ -169,6 +169,10 @@ export class Audio {
         this.noiseShot({ type: 'lowpass', f0: 2400, f1: 80, a: 0.005, d: 1.2 + k * 0.4, peak: 0.9, brown: true });
         this.tone({ type: 'sine', f0: 120, f1: 28, a: 0.005, d: 0.9, peak: 0.8 });
         break;
+      case 'flutter':
+        if (!this.limit('flutter', 500)) return;
+        for (let i = 0; i < 6; i++) this.noiseShot({ type: 'bandpass', f0: 900, f1: 500, q: 1.4, a: 0.004, d: 0.05, peak: 0.07 * k, when: i * 0.045 });
+        break;
       case 'dash':
         this.noiseShot({ type: 'bandpass', f0: 300, f1: 3000, q: 1.2, a: 0.02, d: 0.28, peak: 0.35 });
         break;

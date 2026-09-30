@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Igri 리그 뷰어</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #16120f; color: #ece5da; font-family: 'Noto Sans KR', system-ui, sans-serif; }
+    header { position: fixed; left: 16px; top: 12px; font-size: 13px; color: #a99f94; max-width: calc(100% - 32px); }
+    header b { color: #ffb347; font-size: 16px; margin-right: 8px; }
+    #panel { position: fixed; left: 16px; bottom: 16px; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 32px); }
+    .rig { background: #000a; border: 1px solid #3a322b; border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+    .rig h4 { margin: 0 0 4px; font-size: 12px; color: #ffcf8a; }
+    .rig button { background: #2a231d; color: #ece5da; border: 1px solid #4a3f35; border-radius: 4px; padding: 2px 7px; margin: 0 3px 3px 0; cursor: pointer; font: inherit; }
+    .rig button.on { background: #ff8a2a; color: #1a120c; border-color: #ff8a2a; }
+    .rig small { color: #8d8378; display: block; max-width: 260px; }
+    #opts { position: fixed; right: 16px; top: 12px; font-size: 12px; }
+    #opts label { background: #000a; padding: 4px 8px; border-radius: 4px; margin-left: 6px; cursor: pointer; }
+    #labels { position: fixed; inset: 0; pointer-events: none; }
+    #labels span { position: absolute; transform: translate(-50%, 0); font-size: 12px; white-space: nowrap; background: #000a; padding: 2px 6px; border-radius: 3px; }
+  </style>
+  <script type="importmap">
+    { "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    } }
+  </script>
+</head>
+<body>
+  <header><b>리그 뷰어</b>js/models/rigs.js 의 스킨드 메시 + 모션 클립 · 드래그로 회전</header>
+  <div id="opts"><label><input type="checkbox" id="bones" /> 뼈대</label><label><input type="checkbox" id="walk" /> 제자리 대신 이동</label></div>
+  <div id="labels"></div>
+  <div id="panel"></div>
+  <script type="module">
+    // Every rigged creature with its clip set. Clips tagged "UniMate" came
+    // from tools/unimate; the rest are hand-keyed placeholders.
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { createRigInstance } from './js/models/rigs.js';
+    import { clipsFor, RIG_TYPES } from './js/models/clips/index.js';
+    import { Animator } from './js/models/motion.js';
+
+    const LABEL = { human: '주민', firefighter: '소방관', rabbit: '토끼', squirrel: '다람쥐', deer: '사슴', bird: '새' };
+    const SCALE = { human: 1, firefighter: 1, rabbit: 4, squirrel: 5, deer: 1, bird: 5 };
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    document.body.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x16120f);
+    scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x6b5a45, 1.5));
+    const sun = new THREE.DirectionalLight(0xffe2b8, 2.3);
+    sun.position.set(3, 6, 4);
+    scene.add(sun);
+    const grid = new THREE.GridHelper(40, 40, 0x3a322b, 0x2a241f);
+    scene.add(grid);
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 500);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0.8, 0);
+    camera.position.set(6, 5.5, 13);
+
+    const entries = [];
+    RIG_TYPES.forEach((type, i) => {
+      const rig = createRigInstance(type, type === 'human' ? { shirt: 0x4f7fb8 } : {});
+      const holder = new THREE.Group();
+      holder.add(rig.object);
+      holder.scale.setScalar(SCALE[type]);
+      holder.position.set((i - (RIG_TYPES.length - 1) / 2) * 2.6, 0, 0);
+      scene.add(holder);
+      const clips = clipsFor(type);
+      const anim = new Animator(rig, clips);
+      const helper = new THREE.SkeletonHelper(rig.mesh);
+      helper.visible = false;
+      scene.add(helper);
+      const e = { type, rig, holder, anim, clips, helper, base: holder.position.x, clip: '' };
+      entries.push(e);
+
+      const box = document.createElement('div');
+      box.className = 'rig';
+      box.innerHTML = `<h4>${LABEL[type]} · ${rig.bones.length} bones</h4>`;
+      const note = document.createElement('small');
+      for (const name of Object.keys(clips)) {
+        const b = document.createElement('button');
+        const src = clips[name].userData.source;
+        b.textContent = name + (src === 'unimate' ? ' ✦' : '');
+        b.onclick = () => {
+          e.clip = name;
+          anim.play(name, 0, 0.25);
+          box.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+          const u = clips[name].userData;
+          note.textContent = u.source === 'unimate' ? `UniMate: "${u.prompt}"` : `절차적 · ${clips[name].duration.toFixed(2)}s`;
+        };
+        box.appendChild(b);
+      }
+      box.appendChild(note);
+      document.getElementById('panel').appendChild(box);
+      const moving = Object.keys(clips).find((n) => ['walk', 'hop'].includes(n));
+      (box.querySelector(`button:nth-of-type(${Object.keys(clips).indexOf(moving || 'idle') + 1})`) || box.querySelector('button')).click();
+      const span = document.createElement('span');
+      span.textContent = LABEL[type] + (SCALE[type] !== 1 ? ` ×${SCALE[type]}` : '');
+      document.getElementById('labels').appendChild(span);
+      e.span = span;
+    });
+
+    document.getElementById('bones').onchange = (ev) => entries.forEach((e) => (e.helper.visible = ev.target.checked));
+    const walkBox = document.getElementById('walk');
+
+    function resize() {
+      renderer.setSize(innerWidth, innerHeight);
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+    }
+    addEventListener('resize', resize);
+    resize();
+    const clock = new THREE.Clock();
+    const v = new THREE.Vector3();
+    let t = 0;
+    function frame(dt) {
+      t += dt;
+      for (const e of entries) {
+        e.anim.update(dt);
+        const sp = e.clips[e.clip]?.userData.speed || 0;
+        e.holder.position.z = walkBox.checked && sp ? ((t * sp * SCALE[e.type]) % 8) - 4 : 0;
+        v.set(e.holder.position.x, e.holder.position.y + 2.2, e.holder.position.z).project(camera);
+        e.span.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`;
+        e.span.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    (function loop() {
+      requestAnimationFrame(loop);
+      frame(Math.min(0.05, clock.getDelta()));
+    })();
+    window.__rigs = { entries, frame };
+    window.__ready = true;
+  </script>
+</body>
+</html>

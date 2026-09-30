@@ -28,6 +28,8 @@
     import { BUILDERS } from './js/models/catalog.js';
     import { OBJECTS } from './js/config.js';
     import * as A from './js/models/agents.js';
+    import { createRigInstance } from './js/models/rigs.js';
+    import { clipsFor } from './js/models/clips/index.js';
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(2, devicePixelRatio));
@@ -52,10 +54,17 @@
       const type = key.replace(/\d+$/, '');
       entries.push({ key, label: (OBJECTS[type] || OBJECTS[key])?.label || key, obj: g });
     }
-    const agents = {
-      rabbit: ['토끼', A.rabbitGeo()], squirrel: ['다람쥐', A.squirrelGeo()], person: ['주민', A.personGeo(0x4f7fb8)],
-      firefighter: ['소방관', A.firefighterGeo()], truck: ['소방차', A.truckGeo()], heli: ['소방 헬기', A.heliGeo()],
-    };
+    // rigged creatures, posed on the first frame of their idle clip (animated in rigs.html)
+    const rigs = { rabbit: '토끼', squirrel: '다람쥐', deer: '사슴', bird: '새', human: '주민', firefighter: '소방관' };
+    for (const [key, label] of Object.entries(rigs)) {
+      const rig = createRigInstance(key, key === 'human' ? { shirt: 0x4f7fb8 } : {});
+      const mixer = new THREE.AnimationMixer(rig.mesh);
+      mixer.clipAction(clipsFor(key).idle).play();
+      mixer.update(0);
+      rig.object.updateMatrixWorld(true);
+      entries.push({ key, label, obj: rig.object });
+    }
+    const agents = { truck: ['소방차', A.truckGeo()], heli: ['소방 헬기', A.heliGeo()] };
     for (const [key, [label, geo]] of Object.entries(agents)) entries.push({ key, label, obj: new THREE.Mesh(geo, mat) });
 
     // lay out in a grid; every model is normalized to one cell, real size in the label

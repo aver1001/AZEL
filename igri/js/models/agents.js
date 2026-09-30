@@ -1,59 +1,6 @@
-// Moving things: small animals, residents, firefighters, fire trucks and
-// helicopters. Same vertex-colored low-poly kit as the static props.
-import * as THREE from 'three';
-import { part, merge, box, cyl, cone, ico, sphere } from './geo.js';
-
-const SKIN = 0xe8bd98;
-
-export function rabbitGeo() {
-  return merge([
-    part(sphere(0.16, 8, 6), 0xece6dc, [0, 0.16, 0], [0, 0, 0], [1, 0.85, 1.25]),
-    part(sphere(0.1, 8, 6), 0xf2ede4, [0, 0.27, 0.16]),
-    part(cyl(0.025, 0.035, 0.2, 5), 0xf2ede4, [-0.04, 0.42, 0.14], [0.2, 0, 0.15]),
-    part(cyl(0.025, 0.035, 0.2, 5), 0xf2ede4, [0.04, 0.42, 0.14], [0.2, 0, -0.15]),
-    part(sphere(0.05, 6, 4), 0xffffff, [0, 0.18, -0.2]),
-    part(sphere(0.016, 4, 3), 0x1a1a1a, [-0.05, 0.3, 0.24]),
-    part(sphere(0.016, 4, 3), 0x1a1a1a, [0.05, 0.3, 0.24]),
-  ]);
-}
-
-export function squirrelGeo() {
-  return merge([
-    part(sphere(0.1, 8, 6), 0xb0643a, [0, 0.12, 0], [0, 0, 0], [0.9, 0.9, 1.2]),
-    part(sphere(0.07, 8, 6), 0xbb6f42, [0, 0.2, 0.11]),
-    part(sphere(0.1, 8, 6), 0xc87d4f, [0, 0.24, -0.16], [0.6, 0, 0], [0.7, 1.6, 0.7]),
-    part(cone(0.02, 0.05, 4), 0xb0643a, [-0.035, 0.28, 0.1]),
-    part(cone(0.02, 0.05, 4), 0xb0643a, [0.035, 0.28, 0.1]),
-  ]);
-}
-
-export function personGeo(shirt = 0xffffff) {
-  return merge([
-    part(cyl(0.12, 0.14, 0.8, 7), 0x3b4254, [0, 0.4, 0]),
-    part(cyl(0.22, 0.18, 0.65, 8), shirt, [0, 1.1, 0]),
-    part(sphere(0.15, 8, 6), SKIN, [0, 1.58, 0]),
-    part(sphere(0.155, 8, 4), 0x3a2a22, [0, 1.63, -0.02], [0, 0, 0], [1, 0.7, 1]),
-    part(cyl(0.06, 0.06, 0.6, 5), shirt, [0.28, 1.12, 0], [0, 0, 0.25]),
-    part(cyl(0.06, 0.06, 0.6, 5), shirt, [-0.28, 1.12, 0], [0, 0, -0.25]),
-  ]);
-}
-
-export function firefighterGeo() {
-  const coat = 0x2d2a28;
-  const stripe = 0xd7e84a;
-  return merge([
-    part(cyl(0.14, 0.16, 0.8, 7), coat, [0, 0.4, 0]),
-    part(cyl(0.25, 0.21, 0.7, 8), coat, [0, 1.12, 0]),
-    part(cyl(0.255, 0.255, 0.08, 8), stripe, [0, 0.95, 0]),
-    part(cyl(0.225, 0.225, 0.08, 8), stripe, [0, 1.32, 0]),
-    part(sphere(0.15, 8, 6), SKIN, [0, 1.6, 0]),
-    part(sphere(0.2, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0xd1302a, [0, 1.66, 0], [0, 0, 0], [1, 0.75, 1.15]),
-    part(cyl(0.24, 0.24, 0.03, 10), 0xd1302a, [0, 1.66, 0.02]),
-    // extinguisher
-    part(cyl(0.09, 0.09, 0.5, 8), 0xd1302a, [0.3, 0.95, 0.25]),
-    part(cyl(0.03, 0.03, 0.3, 5), 0x222222, [0.3, 1.12, 0.48], [Math.PI / 2, 0, 0]),
-  ]);
-}
+// Rigid vehicles: fire trucks and helicopters. Same vertex-colored low-poly
+// kit as the static props. People and animals are skinned rigs (rigs.js).
+import { part, merge, box, cyl, sphere } from './geo.js';
 
 export function truckGeo() {
   const red = 0xc9261f;

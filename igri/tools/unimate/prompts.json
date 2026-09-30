@@ -1,0 +1,18 @@
+{
+  "IgriHuman-idle": "a person stands still, shifts their weight and looks around",
+  "IgriHuman-walk": "a person walks forward at a relaxed pace, swinging their arms",
+  "IgriHuman-run": "a person runs forward quickly",
+  "IgriHuman-panic": "a person runs away in panic with both arms raised above their head, looking back over their shoulder",
+  "IgriHuman-aim": "a person stands with the right arm stretched forward holding a fire extinguisher, bracing it with the left hand, and sprays",
+  "IgriRabbit-idle": "a rabbit sits still, sniffs the air and twitches its ears",
+  "IgriRabbit-hop": "a rabbit hops forward",
+  "IgriRabbit-run": "a rabbit runs away at full speed in quick bounds",
+  "IgriSquirrel-idle": "a squirrel stands still, looks around and flicks its tail",
+  "IgriSquirrel-hop": "a squirrel hops forward",
+  "IgriSquirrel-run": "a squirrel runs away quickly",
+  "IgriDeer-idle": "a deer lowers its head to graze, then raises it and looks around",
+  "IgriDeer-walk": "a deer walks forward calmly",
+  "IgriDeer-gallop": "a deer gallops forward at full speed with its tail raised",
+  "IgriBird-idle": "a small bird pecks at the ground and looks around",
+  "IgriBird-fly": "a small bird flaps its wings and flies forward"
+}

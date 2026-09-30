@@ -216,6 +216,10 @@ async function boot() {
     },
     scream() {},
     animal() {},
+    birdsUp(a) {
+      const d = Math.hypot(a.pos.x - g.player.pos.x, a.pos.z - g.player.pos.z);
+      if (d < 20) audio.play('flutter', 1 - d / 20);
+    },
     evaporate() {
       audio.play('hiss', 0.6);
     },
