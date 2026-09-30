@@ -264,7 +264,7 @@ def make_loop(q, root, leaf, fps, min_len, blend=5, tol=0.03):
         src = n - k + s
         q2[src] = qslerp(q2[src], q[bi - k + s], w)
         r2[src] = r2[src] * (1 - w) + root[bi - k + s] * w
-    return q2, r2, best
+    return q2, r2, best, (bi, bj)
 
 
 # --------------------------------------------------------------------------
@@ -438,8 +438,9 @@ def cmd_to_clips(args):
         hand = rig['clips'].get(clip)
         cycle = hand['frames'] / hand['fps'] if hand else 1.0
         min_len = 1.2 if idle_like.search(clip) else max(0.3, 0.75 * cycle)
-        q, root, cost = make_loop(q, root, leaf, fps, min_len)
+        q, root, cost, window = make_loop(q, root, leaf, fps, min_len)
         info['seam'] = float(cost)
+        info['window'] = window
         # judge against the hand-keyed clip the game was tuned with
         want = rig['clips'].get(clip, {}).get('speed', 0) or 0
         bad = []
@@ -480,7 +481,8 @@ def cmd_to_clips(args):
         for r, res in results.items():
             i = res['info']
             print(f'  {key:22s} take {r:3s} fwd {i.get("forward", 0):5.2f}  side {i.get("lateral", 0):4.2f}  '
-                  f'turn {i.get("turn", 0):4.0f}°/s  jitter {i["jitter"]:4.0f}°  seam {i["seam"]:.3f}  score {res["score"]:.2f}'
+                  f'turn {i.get("turn", 0):4.0f}°/s  jitter {i["jitter"]:4.0f}°  seam {i["seam"]:.3f}  '
+                  f'loop {i["window"][0]}–{i["window"][1]}  score {res["score"]:.2f}'
                   + (f'  ✗ {"; ".join(res["bad"])}' if res['bad'] else ''))
         ok = {r: res for r, res in results.items() if not res['bad'] or key in pick}
         if not ok:
