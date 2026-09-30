@@ -216,6 +216,24 @@ def in_place(q, root, fps):
     return q, root, float(speed)
 
 
+def smooth(q, root, sigma):
+    """Gaussian low-pass over time (generated clips can jitter frame to frame)."""
+    if sigma <= 0:
+        return q, root
+    q = q.copy()
+    for t in range(1, len(q)):  # keep each track on one hemisphere
+        flip = np.sum(q[t] * q[t - 1], -1) < 0
+        q[t, flip] *= -1
+    r = int(np.ceil(3 * sigma))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    idx = np.clip(np.arange(len(q))[:, None] + np.arange(-r, r + 1)[None], 0, len(q) - 1)
+    q = np.einsum('tk,tk...->t...', np.broadcast_to(k, idx.shape), q[idx])
+    q /= np.linalg.norm(q, axis=-1, keepdims=True)
+    root = np.einsum('tk,tkc->tc', np.broadcast_to(k, idx.shape), root[idx])
+    return q, root
+
+
 def make_loop(q, root, leaf, fps, min_len, blend=5, tol=0.03):
     """Pick the most similar pair of frames at least `min_len` seconds apart
     and cross-fade the tail into the frames before the start."""
@@ -409,6 +427,7 @@ def cmd_to_clips(args):
         fps = args.fps
         q, root, fr = decode(np.load(path), cond[ot], rig)
         q, root, speed = in_place(q, root, fps)
+        q, root = smooth(q, root, args.smooth)
         leaf = is_leaf(rig['parents'])
         min_len = 1.2 if idle_like.search(clip) else 0.35
         q, root, cost = make_loop(q, root, leaf, fps, min_len)
@@ -467,6 +486,7 @@ def main():
     p.add_argument('--features', default=os.path.join(work, 'features'))
     p.add_argument('--pick', nargs='*', default=[], help='choose a repetition, e.g. IgriRabbit-hop=2')
     p.add_argument('--fps', type=int, default=30)
+    p.add_argument('--smooth', type=float, default=1.0, help='temporal smoothing sigma in frames (0 = off)')
     p.add_argument('--out', default=os.path.join(IGRI, 'js', 'models', 'clips', 'unimate.js'))
 
     args = ap.parse_args()
