@@ -459,8 +459,17 @@ def cmd_to_clips(args):
         score += info['jitter'] / 60
         return dict(q=q, root=root, speed=speed, info=info, bad=bad, score=score)
 
+    # --skip drops a whole clip (KEY) or single takes (KEY=take) after review
+    for item in args.skip:
+        key, _, take = item.partition('=')
+        if take:
+            reps.get(key, {}).pop(take, None)
+        else:
+            reps.pop(key, None)
     chosen = {}
     for key, by_rep in sorted(reps.items()):
+        if not by_rep:
+            continue
         if key in pick:
             if pick[key] not in by_rep:
                 sys.exit(f'{key}: no repetition {pick[key]} (have {sorted(by_rep)})')
@@ -541,6 +550,7 @@ def main():
     p.add_argument('--pick', nargs='*', default=[], help='choose a take, e.g. IgriRabbit-hop=2 or IgriDeer-gallop=b1')
     p.add_argument('--fps', type=int, default=30)
     p.add_argument('--smooth', type=float, default=1.0, help='temporal smoothing sigma in frames (0 = off)')
+    p.add_argument('--skip', nargs='*', default=[], help='drop clips (IgriHuman-aim) or takes (IgriHuman-aim=1) that look wrong')
     p.add_argument('--auto', action='store_true', help='score every repetition, keep the best usable one per clip')
     p.add_argument('--max_jitter', type=float, default=35, help='95th-percentile per-frame joint rotation (deg) above which a take is rejected')
     p.add_argument('--out', default=os.path.join(IGRI, 'js', 'models', 'clips', 'unimate.js'))
