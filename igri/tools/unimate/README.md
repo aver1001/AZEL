@@ -59,6 +59,31 @@ python tools/unimate/igri_unimate.py to_clips --unimate $UM \
 
 `rigs.html`을 열어 ✦ 클립을 확인하고, 게임을 다시 빌드하면 적용됩니다. 결과가 이상한 동작만 `unimate.js`에서 빼면 그 동작은 기본 동작으로 돌아갑니다.
 
+## 현재 `unimate.js` (공개 체크포인트 `unimate_uniml3d_f60_preview` step 120000)
+
+CPU에서 `sample_cpu.py`(midpoint 16스텝)로 생성했습니다. 기본 프롬프트 16개 × 3벌, 실패한 동작은 `prompts_retry.json`·`prompts_retry2.json`의 다른 표현으로 2벌씩 더 뽑고, `--auto` 점수와 눈 검토로 골랐습니다.
+
+| 캐릭터 | UniMate 동작 | 기본 동작 유지 |
+|---|---|---|
+| 주민·소방관 | 대기, 걷기, 달리기, 패닉, 조준(상체만) | — |
+| 토끼 | 대기, 깡충, 질주 | — |
+| 다람쥐 | 대기, 깡충 | 질주 (생성 속도가 게임 이동 속도의 1/4 수준) |
+| 사슴 | 대기, 걷기, 질주 | — |
+| 새 | 대기(날개 접고 쪼기), 날기 | — |
+
+알게 된 점: 빠른 이동은 짧고 단순한 문장("a deer runs forward fast")이 훨씬 잘 나옵니다. 조준은 걸으면서 팔을 뻗은 벌만 나와서, 팔을 뻗은 0~41프레임의 상체만 쓰고 다리는 선 자세로 둡니다.
+
+재현 명령(샘플 폴더 3개를 합쳐 선별):
+
+```bash
+python tools/unimate/igri_unimate.py to_clips --auto --unimate $UM \
+    --motions $UM/outputs/igri_f60/all/motions $UM/outputs/igri_f60/retry/motions $UM/outputs/igri_f60/retry2/motions \
+    --pick IgriDeer-idle=2 IgriHuman-aim=b1 --range IgriHuman-aim=0-41 \
+    --only "IgriHuman-aim=Spine|Neck|Head|Shoulder|Arm|Hand"
+```
+
+선별 옵션: `--auto`(벌마다 점수: 게임 속도 대비 전진 속도, 옆 흐름, 떨림, 루프 이음새), `--pick 키=벌`(직접 지정, 다른 문장 벌은 `b0`, `c1` 식), `--skip 키[=벌]`(검토 후 제외), `--range 키=a-b`(쓸 프레임 구간), `--only 키=정규식`(해당 관절만 쓰는 레이어).
+
 ## 변환 규칙 (`to_clips`)
 
 - UniMate 정규화 공간(지름 2로 스케일, +Z 정면, 바닥 접지)을 T-포즈 비교로 구한 스케일·회전으로 게임 리그 공간에 되돌립니다.

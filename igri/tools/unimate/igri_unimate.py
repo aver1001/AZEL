@@ -429,6 +429,9 @@ def cmd_to_clips(args):
         ot, clip = key.split('-', 1)
         rig = rigs[ot]
         q, root, fr = decode(np.load(path), cond[ot], rig)
+        if key in frames:  # --range: only part of the take is usable
+            a, b = frames[key]
+            q, root = q[a:b], root[a:b]
         info = {}
         q, root, speed = in_place(q, root, fps, info)
         leaf = is_leaf(rig['parents'])
@@ -437,14 +440,16 @@ def cmd_to_clips(args):
         # a loop must hold at least most of one cycle of the hand-keyed version
         hand = rig['clips'].get(clip)
         cycle = hand['frames'] / hand['fps'] if hand else 1.0
-        min_len = 1.2 if idle_like.search(clip) else max(0.3, 0.75 * cycle)
+        min_len = min(1.2, 0.6 * len(q) / fps) if idle_like.search(clip) else max(0.3, 0.75 * cycle)
         q, root, cost, window = make_loop(q, root, leaf, fps, min_len)
         info['seam'] = float(cost)
         info['window'] = window
         # judge against the hand-keyed clip the game was tuned with
         want = rig['clips'].get(clip, {}).get('speed', 0) or 0
         bad = []
-        if want > 0:
+        if key in only:  # upper-body layer: its travel doesn't matter
+            pass
+        elif want > 0:
             ratio = info.get('forward', 0) / want
             if not 0.35 <= ratio <= 2.5:
                 bad.append(f'forward speed {info.get("forward", 0):.2f} m/s vs {want:.2f} expected')
@@ -454,12 +459,15 @@ def cmd_to_clips(args):
         else:
             if speed > 0.35:
                 bad.append(f'travels {speed:.2f} m/s while it should stay put')
+        if want <= 0 or key in only:
             score = cost
         if info['jitter'] > args.max_jitter:
             bad.append(f'jitter {info["jitter"]:.0f}°/frame')
         score += info['jitter'] / 60
         return dict(q=q, root=root, speed=speed, info=info, bad=bad, score=score)
 
+    frames = {k: tuple(int(x) for x in v.split('-')) for k, v in (r.split('=') for r in args.range)}
+    only = {k: re.compile(v) for k, v in (o.split('=', 1) for o in args.only)}
     # --skip drops a whole clip (KEY) or single takes (KEY=take) after review
     for item in args.skip:
         key, _, take = item.partition('=')
@@ -499,6 +507,13 @@ def cmd_to_clips(args):
         q = q[..., [1, 2, 3, 0]]  # → xyzw for three.js
         # joints that never leave the rest pose (leaves, mostly) need no track
         keep = [j for j in range(q.shape[1]) if j == 0 or np.abs(np.abs(q[:, j, 3]) - 1).max() > 1e-5]
+        if key in only:
+            # a layer: listed joints only, hips at rest, so the rest of the body
+            # holds its rest pose (standing) instead of stepping in place
+            keep = [0] + [j for j in keep[1:] if only[key].search(rig['joints'][j])]
+            q = q.copy()
+            q[:, 0] = [0, 0, 0, 1]
+            root = np.repeat(np.asarray(rig['offsets'][0], float)[None], len(q), 0)
         q = q[:, keep]
         data = {
             'name': clip, 'rig': rig['rig'], 'fps': fps, 'frames': len(q), 'loop': True,
@@ -552,6 +567,8 @@ def main():
     p.add_argument('--pick', nargs='*', default=[], help='choose a take, e.g. IgriRabbit-hop=2 or IgriDeer-gallop=b1')
     p.add_argument('--fps', type=int, default=30)
     p.add_argument('--smooth', type=float, default=1.0, help='temporal smoothing sigma in frames (0 = off)')
+    p.add_argument('--range', nargs='*', default=[], help='use only frames a-b of a clip\'s takes, e.g. IgriHuman-aim=0-41')
+    p.add_argument('--only', nargs='*', default=[], help='keep only joints matching a regex, e.g. "IgriHuman-aim=Spine|Neck|Head|Shoulder|Arm|Hand"')
     p.add_argument('--skip', nargs='*', default=[], help='drop clips (IgriHuman-aim) or takes (IgriHuman-aim=1) that look wrong')
     p.add_argument('--auto', action='store_true', help='score every repetition, keep the best usable one per clip')
     p.add_argument('--max_jitter', type=float, default=35, help='95th-percentile per-frame joint rotation (deg) above which a take is rejected')
