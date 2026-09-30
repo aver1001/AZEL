@@ -15,6 +15,7 @@
 | `igri_unimate.py roundtrip` | 기본 동작을 UniMate 12차원 특징으로 인코딩한 뒤 다시 게임 리그로 디코딩해 오차 확인(모델 불필요) |
 | `igri_unimate.py exp` | 공개 체크포인트를 쓰되 우리 feature 폴더만 읽는 실험 폴더 생성 (UniML3D 데이터셋 불필요) |
 | `igri_unimate.py to_clips` | UniMate 샘플(`motions/*.npy`) → 제자리 루프 클립 → `js/models/clips/unimate.js` |
+| `sample_cpu.py` | UniMate 샘플러를 고정 스텝 ODE 해법으로 실행 (CPU에서 약 8배 빠름) |
 | `prompts.json` | 동작별 프롬프트. UniMate `--test_cases_json` 형식 그대로 |
 
 검증 결과: 5개 골격, 14개 클립 모두 왕복 오차 **0.000 mm / 0.00°**(UniMate 정규화에서 스케일만 달라지고 정면 회전은 0°).
@@ -40,13 +41,15 @@ huggingface-cli download Linzhan/UniMate --include "unimate_uniml3d_f60_preview/
 python tools/unimate/igri_unimate.py exp \
     --checkpoint $UM/outputs/released/unimate_uniml3d_f60_preview --out $UM/outputs/igri_f60   # GPU면 --device cuda
 
-# 3) 동작 생성 (UniMate 폴더에서)
-cd $UM
-python -m unimate.inference.sample \
+# 3) 동작 생성
+#    GPU가 없으면 sample_cpu.py로 고정 스텝 해법(midpoint 16스텝)을 쓰세요.
+#    기본 해법(dopri5)은 CPU에서 동작당 약 10분, 이 방법은 약 75초이고 결과 품질도 비슷하거나 낫습니다.
+python tools/unimate/sample_cpu.py --unimate $UM --method midpoint --steps 16 -- \
     --exp_dir outputs/igri_f60 \
-    --test_cases_json /path/to/igri/tools/unimate/prompts.json \
-    --num_repetitions 3 --only_save_motion \
+    --test_cases_json $PWD/tools/unimate/prompts.json \
+    --num_repetitions 3 --batch_size 16 --only_save_motion \
     --output_dir outputs/igri
+#    GPU가 있으면 원래 명령 그대로: cd $UM && python -m unimate.inference.sample --exp_dir outputs/igri_f60 ...
 
 # 4) 게임 클립으로 변환 (마음에 드는 반복 번호는 --pick으로)
 cd /path/to/igri
