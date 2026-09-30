@@ -4,12 +4,14 @@ arbitrary skeletons, https://github.com/Friedrich-M/UniMate).
 
 Steps (see README.md in this folder):
 
-  prepare    rigs.json → stage-1 export NPZs → UniMate feature dir
-             (cond.npy + canonical clips) for our object types
+  prepare    rigs.json → stage-1 export NPZs → UniMate feature dirs
+             (cond.npy + canonical clips): people under features/mixamo,
+             animals under features/truebones, matching the normalization
+             statistics the released model uses for each
   roundtrip  encode the prepared clips to UniMate's 12-d features and decode
              them back onto our rigs, reporting the error (no model needed)
-  merge      add our object types to the feature dir a released checkpoint
-             was trained on, so its sampler can target them
+  exp        an experiment dir that reuses a released checkpoint but reads
+             only our feature dirs, so the UniML3D dataset isn't needed
   to_clips   UniMate samples (motions/*.npy) → js/models/clips/unimate.js
 
 Our rigs use identity rest rotations with the rest pose in the bone offsets
@@ -27,6 +29,19 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IGRI = os.path.abspath(os.path.join(HERE, '..', '..'))
+
+
+# which UniMate dataset (and so which normalization statistics) each rig joins
+DATASET = {'human': 'mixamo'}
+
+
+def load_cond(features):
+    cond = {}
+    for f in sorted(glob.glob(os.path.join(features, '*', 'cond.npy'))):
+        cond.update(np.load(f, allow_pickle=True).item())
+    if not cond:
+        sys.exit(f'no */cond.npy under {features}; run prepare first')
+    return cond
 
 
 def use_unimate(path):
@@ -242,9 +257,11 @@ def cmd_prepare(args):
     prompts = json.load(open(args.prompts))
     export = os.path.join(args.work, 'export', 'motions')
     os.makedirs(export, exist_ok=True)
-    os.makedirs(args.out, exist_ok=True)
-    cond, captions = {}, {}
+    conds, captions = {}, {}
     for ot, rig in rigs.items():
+        ds = DATASET.get(rig['rig'], 'truebones')
+        out = os.path.join(args.out, ds)
+        os.makedirs(out, exist_ok=True)
         names, parents = rig['joints'], np.asarray(rig['parents'])
         offsets = np.asarray(rig['offsets'], float)
         J = len(names)
@@ -272,19 +289,21 @@ def cmd_prepare(args):
             caps[stem] = prompts.get(stem, f'a {rig["rig"]} {clip}')
         face = {'r_hip': {'raw': rig['face'][0]}, 'l_hip': {'raw': rig['face'][1]}}
         obj, n_clips, n_frames, nj, filtered = process_object(
-            ot, sorted(npzs), args.out, captions=caps, face_joints=face, clean_names=clean,
+            ot, sorted(npzs), out, captions=caps, face_joints=face, clean_names=clean,
             save_vis=False, apply_clip=False, max_clip_len=200, min_joints=2, max_joints=150)
         if obj is None:
             sys.exit(f'{ot}: rejected by UniMate feature extraction: {filtered}')
-        cond[ot] = obj
-        captions.update(obj.get('captions', {}))
+        conds.setdefault(ds, {})[ot] = obj
+        captions.setdefault(ds, {}).update(obj.get('captions', {}))
         fr = Frame(obj, rig)
-        print(f'{ot:13s} {nj:2d} joints  {n_clips} clips  scale {obj["scale_factor"]:.3f}  '
+        print(f'{ot:13s} {ds:9s} {nj:2d} joints  {n_clips} clips  scale {obj["scale_factor"]:.3f}  '
               f'yaw {np.degrees(2 * np.arctan2(fr.qR[2], fr.qR[0])):+.1f}°  rest fit {fr.fit * 1000:.2f} mm'
               + (f'  filtered: {[f["name"] for f in filtered]}' if filtered else ''))
-    np.save(os.path.join(args.out, 'cond.npy'), cond, allow_pickle=True)
-    json.dump(captions, open(os.path.join(args.out, 'captions.json'), 'w'), indent=2)
-    print('wrote', os.path.join(args.out, 'cond.npy'))
+    for ds, cond in conds.items():
+        out = os.path.join(args.out, ds)
+        np.save(os.path.join(out, 'cond.npy'), cond, allow_pickle=True)
+        json.dump(captions[ds], open(os.path.join(out, 'captions.json'), 'w'), indent=2)
+        print('wrote', os.path.join(out, 'cond.npy'), sorted(cond))
 
 
 def cmd_roundtrip(args):
@@ -293,12 +312,12 @@ def cmd_roundtrip(args):
     from unimate.utils.motion_utils import compute_rots_from_tpos, compute_unimate_motion_feats
 
     rigs = json.load(open(args.rigs))
-    cond = np.load(os.path.join(args.features, 'cond.npy'), allow_pickle=True).item()
+    cond = load_cond(args.features)
     worst = 0.0
     dumped = {}
     if args.dump:
         os.makedirs(os.path.join(args.dump, 'motions'), exist_ok=True)
-    for path in sorted(glob.glob(os.path.join(args.features, 'motions', '*.npz'))):
+    for path in sorted(glob.glob(os.path.join(args.features, '*', 'motions', '*.npz'))):
         name = os.path.splitext(os.path.basename(path))[0]
         ot, clip = name.split('-')[:2]
         c, rig = cond[ot], rigs[ot]
@@ -336,30 +355,37 @@ def cmd_roundtrip(args):
         print(f'dumped {len(dumped)} feature files to {args.dump}/motions')
 
 
-def cmd_merge(args):
-    ours = np.load(os.path.join(args.features, 'cond.npy'), allow_pickle=True).item()
-    target = os.path.join(args.into, 'cond.npy')
-    cond = np.load(target, allow_pickle=True).item()
-    cond.update(ours)
-    np.save(target, cond, allow_pickle=True)
-    os.makedirs(os.path.join(args.into, 'motions'), exist_ok=True)
-    n = 0
-    for p in glob.glob(os.path.join(args.features, 'motions', '*.npz')):
-        dst = os.path.join(args.into, 'motions', os.path.basename(p))
-        with open(p, 'rb') as a, open(dst, 'wb') as b:
-            b.write(a.read())
-        n += 1
-    capf = os.path.join(args.into, 'captions.json')
-    caps = json.load(open(capf)) if os.path.exists(capf) else {}
-    caps.update(json.load(open(os.path.join(args.features, 'captions.json'))))
-    json.dump(caps, open(capf, 'w'), indent=2)
-    print(f'merged {len(ours)} object types and {n} clips into {args.into}')
+def cmd_exp(args):
+    """Released checkpoint + our feature dirs → a runnable experiment dir."""
+    src = os.path.abspath(args.checkpoint)
+    out = os.path.abspath(args.out)
+    os.makedirs(out, exist_ok=True)
+    config = json.load(open(os.path.join(src, 'config.json')))
+    stats = np.load(os.path.join(src, 'dataset_stats.npy'), allow_pickle=True).item()
+    datasets = [d for d in ('truebones', 'mixamo', 'objaverse')
+                if os.path.exists(os.path.join(args.features, d, 'cond.npy'))]
+    for d in datasets:
+        if d not in stats:
+            sys.exit(f'the checkpoint has no normalization stats for {d!r}')
+        entry = dict(config.get(d, {}), type=d, path=os.path.abspath(os.path.join(args.features, d)))
+        if d == 'truebones':
+            entry['objects_subset'] = 'all'
+        config[d] = entry
+    config['dataset']['dataset_list'] = datasets
+    config['experiment']['output_dir'] = out
+    config['sampling']['device'] = args.device
+    json.dump(config, open(os.path.join(out, 'config.json'), 'w'), indent=4)
+    for name in ('dataset_stats.npy', 'checkpoints'):
+        link = os.path.join(out, name)
+        if not os.path.lexists(link):
+            os.symlink(os.path.join(src, name), link)
+    print(f'wrote {out}: datasets {datasets}, device {args.device}, checkpoints from {src}')
 
 
 def cmd_to_clips(args):
     use_unimate(args.unimate)
     rigs = json.load(open(args.rigs))
-    cond = np.load(os.path.join(args.features, 'cond.npy'), allow_pickle=True).item()
+    cond = load_cond(args.features)
     capf = os.path.join(os.path.dirname(os.path.abspath(args.motions)), 'captions.json')
     caps = json.load(open(capf)) if os.path.exists(capf) else {}
     pick = {k: int(v) for k, v in (p.split('=') for p in args.pick)}
@@ -428,9 +454,11 @@ def main():
     p.add_argument('--features', default=os.path.join(work, 'features'))
     p.add_argument('--dump', help='also write the encoded clips as sample-style .npy files here')
 
-    p = sub.add_parser('merge')
+    p = sub.add_parser('exp')
+    p.add_argument('--checkpoint', required=True, help='released experiment dir (config.json, dataset_stats.npy, checkpoints/)')
+    p.add_argument('--out', required=True, help='new experiment dir to create')
     p.add_argument('--features', default=os.path.join(work, 'features'))
-    p.add_argument('--into', required=True, help='feature dir the checkpoint was trained on, e.g. <UniMate>/dataset/features/truebones')
+    p.add_argument('--device', default='cuda' if os.environ.get('CUDA_VISIBLE_DEVICES', '') != '' else 'cpu')
 
     p = sub.add_parser('to_clips')
     p.add_argument('--unimate', required=True)
@@ -442,7 +470,7 @@ def main():
     p.add_argument('--out', default=os.path.join(IGRI, 'js', 'models', 'clips', 'unimate.js'))
 
     args = ap.parse_args()
-    {'prepare': cmd_prepare, 'roundtrip': cmd_roundtrip, 'merge': cmd_merge, 'to_clips': cmd_to_clips}[args.cmd](args)
+    {'prepare': cmd_prepare, 'roundtrip': cmd_roundtrip, 'exp': cmd_exp, 'to_clips': cmd_to_clips}[args.cmd](args)
 
 
 if __name__ == '__main__':

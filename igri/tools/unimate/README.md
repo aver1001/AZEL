@@ -13,7 +13,7 @@
 | `export_rigs.mjs` | 게임 리그(관절·부모·오프셋·정면 기준 골반)와 기본 동작을 `work/rigs.json`으로 내보냄 |
 | `igri_unimate.py prepare` | `rigs.json` → UniMate 1단계 NPZ → UniMate의 4단계 추출 코드(`process_object`)로 `cond.npy`와 정규화 클립 생성 |
 | `igri_unimate.py roundtrip` | 기본 동작을 UniMate 12차원 특징으로 인코딩한 뒤 다시 게임 리그로 디코딩해 오차 확인(모델 불필요) |
-| `igri_unimate.py merge` | 우리 오브젝트 타입(`IgriHuman` 등)을 체크포인트가 학습한 feature 폴더에 추가 |
+| `igri_unimate.py exp` | 공개 체크포인트를 쓰되 우리 feature 폴더만 읽는 실험 폴더 생성 (UniML3D 데이터셋 불필요) |
 | `igri_unimate.py to_clips` | UniMate 샘플(`motions/*.npy`) → 제자리 루프 클립 → `js/models/clips/unimate.js` |
 | `prompts.json` | 동작별 프롬프트. UniMate `--test_cases_json` 형식 그대로 |
 
@@ -32,17 +32,18 @@ node tools/unimate/export_rigs.mjs
 python tools/unimate/igri_unimate.py prepare   --unimate $UM
 python tools/unimate/igri_unimate.py roundtrip --unimate $UM     # worst FK error 0.000 mm 이면 정상
 
-# 2) 체크포인트와 데이터셋 feature 받기 (Hugging Face — 폴더 구성은 받은 저장소에 맞게 조정)
-huggingface-cli download Linzhan/UniMate --local-dir $UM/outputs
-huggingface-cli download Linzhan/UniML3D --repo-type dataset --local-dir $UM/dataset
-#    받은 실험 폴더(config.json, dataset_stats.npy, checkpoints/)의 dataset.dataset_list에 있는
-#    multi-topology feature 폴더(예: objaverse)에 우리 골격을 추가
-python tools/unimate/igri_unimate.py merge --into $UM/dataset/features/objaverse
+# 2) 체크포인트 받기 (Hugging Face, 약 1.2 GB) + 실험 폴더 만들기
+#    사람은 mixamo, 동물은 truebones 정규화 통계를 쓰도록 feature 폴더가 나뉘어 있습니다.
+huggingface-cli download Linzhan/UniMate --include "unimate_uniml3d_f60_preview/config.json" \
+    "unimate_uniml3d_f60_preview/dataset_stats.npy" \
+    "unimate_uniml3d_f60_preview/checkpoints/checkpoint_step_120000.pt" --local-dir $UM/outputs/released
+python tools/unimate/igri_unimate.py exp \
+    --checkpoint $UM/outputs/released/unimate_uniml3d_f60_preview --out $UM/outputs/igri_f60   # GPU면 --device cuda
 
 # 3) 동작 생성 (UniMate 폴더에서)
 cd $UM
 python -m unimate.inference.sample \
-    --exp_dir outputs/uniml3d_60frames_graph_adaln \
+    --exp_dir outputs/igri_f60 \
     --test_cases_json /path/to/igri/tools/unimate/prompts.json \
     --num_repetitions 3 --only_save_motion \
     --output_dir outputs/igri
